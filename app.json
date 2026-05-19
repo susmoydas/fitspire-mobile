@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Fitspire",
+    "slug": "fitspire-mobile",
+    "version": "0.1.0",
+    "sdkVersion": "54.0.0",
+    "platforms": [
+      "android",
+      "ios",
+      "web"
+    ],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
+    "android": {
+      "package": "com.fitspire.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F172A"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.fitspire.mobile",
+      "supportsTablet": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "ebe7f82b-69aa-4983-bf76-9051842cdfed"
+      }
+    },
+    "owner": "susmoy6"
+  }
+}

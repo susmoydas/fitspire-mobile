@@ -2,22 +2,35 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import MainTabs from './MainTabs';
 import SplashScreen from '../screens/SplashScreen';
-import OnboardingScreen from '../screens/OnboardingScreen';
-import UserSetupScreen from '../screens/UserSetupScreen';
-import ExerciseDetailScreen from '../screens/ExerciseDetailScreen';
+import WelcomeScreen from '../screens/WelcomeScreen';
+import ProfileSetupScreen from '../screens/ProfileSetupScreen';
+import WorkoutDetailScreen from '../screens/WorkoutDetailScreen';
 import WorkoutTimerScreen from '../screens/WorkoutTimerScreen';
 import WorkoutCompleteScreen from '../screens/WorkoutCompleteScreen';
-import GoalsScreen from '../screens/GoalsScreen';
+import ActiveTrainingScreen from '../screens/ActiveTrainingScreen';
+import TrainingDetailScreen from '../screens/TrainingDetailScreen';
+import ActivityHistoryScreen from '../screens/ActivityHistoryScreen';
+import ExerciseInstructionScreen from '../screens/ExerciseInstructionScreen';
+import EditProfileScreen from '../screens/EditProfileScreen';
+import StepDetailScreen from '../screens/StepDetailScreen';
+import MovementMapScreen from '../screens/MovementMapScreen';
+import { TrainingMode, Exercise, TrainingSession } from '../types';
 
 export type RootStackParamList = {
   Splash: undefined;
-  Onboarding: undefined;
-  UserSetup: undefined;
+  Welcome: undefined;
+  ProfileSetup: undefined;
   Main: undefined;
-  ExerciseDetail: { exerciseId: string };
-  WorkoutTimer: undefined;
-  WorkoutComplete: { sessionId: string; duration: number };
-  Goals: undefined;
+  WorkoutDetail: { workoutId: string; workoutTitle?: string };
+  ExerciseInstruction: { exerciseId: string; exerciseData?: Exercise };
+  WorkoutTimer: { planJson: string };
+  WorkoutComplete: { workoutId: string; duration: number; exercisesCompleted: number; totalExercises: number; calories: number; workoutTitle: string; category: string; difficulty: string; targetMusclesJson: string; planId?: string };
+  ActiveTraining: { mode: TrainingMode };
+  TrainingDetail: { session: TrainingSession };
+  ActivityHistory: undefined;
+  EditProfile: undefined;
+  StepDetail: undefined;
+  MovementMap: { date?: string } | undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -26,13 +39,19 @@ export default function RootNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Splash" component={SplashScreen} />
-      <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-      <Stack.Screen name="UserSetup" component={UserSetupScreen} />
+      <Stack.Screen name="Welcome" component={WelcomeScreen} />
+      <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
       <Stack.Screen name="Main" component={MainTabs} />
-      <Stack.Screen name="ExerciseDetail" component={ExerciseDetailScreen} />
+      <Stack.Screen name="WorkoutDetail" component={WorkoutDetailScreen} />
+      <Stack.Screen name="ExerciseInstruction" component={ExerciseInstructionScreen} />
       <Stack.Screen name="WorkoutTimer" component={WorkoutTimerScreen} />
       <Stack.Screen name="WorkoutComplete" component={WorkoutCompleteScreen} />
-      <Stack.Screen name="Goals" component={GoalsScreen} />
+      <Stack.Screen name="ActiveTraining" component={ActiveTrainingScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
+      <Stack.Screen name="TrainingDetail" component={TrainingDetailScreen} />
+      <Stack.Screen name="ActivityHistory" component={ActivityHistoryScreen} />
+      <Stack.Screen name="StepDetail" component={StepDetailScreen} />
+      <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+      <Stack.Screen name="MovementMap" component={MovementMapScreen} />
     </Stack.Navigator>
   );
 }

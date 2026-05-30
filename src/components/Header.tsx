@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, fontSize, spacing } from './Theme';
+import { colors, fontSize, spacing } from '../theme/colors';
 
 interface HeaderProps {
   title: string;
@@ -30,7 +30,7 @@ export default function Header({ title, onBack, rightAction }: HeaderProps) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.bg,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,

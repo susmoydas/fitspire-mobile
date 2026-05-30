@@ -9,43 +9,46 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/RootNavigator';
-import Button from '../components/Button';
-import { colors, fontSize, spacing, borderRadius } from '../components/Theme';
+import { Button } from '@/components/ui/button';
+import { MaterialIcons } from '@expo/vector-icons';
+import { colors, fontSize, spacing, borderRadius } from '../theme/colors';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'ProfileSetup'>;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const slides = [
   {
     id: '1',
-    icon: '💪',
+    icon: 'fitness-center',
     title: 'Track Your Workouts',
     subtitle: 'Log every set, rep, and weight. Watch your progress skyrocket.',
   },
   {
     id: '2',
-    icon: '🥗',
+    icon: 'restaurant',
     title: 'Monitor Nutrition',
     subtitle: 'Track meals, calories, and macros. Fuel your body right.',
   },
   {
     id: '3',
-    icon: '📊',
+    icon: 'bar-chart',
     title: 'See Your Progress',
     subtitle: 'Beautiful charts and stats to keep you motivated every day.',
   },
   {
     id: '4',
-    icon: '🏆',
+    icon: 'emoji-events',
     title: 'Achieve Your Goals',
     subtitle: 'Set goals, crush them, and become the best version of you.',
   },
 ];
 
 export default function OnboardingScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -58,24 +61,24 @@ export default function OnboardingScreen({ navigation }: Props) {
     if (currentIndex < slides.length - 1) {
       flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
     } else {
-      navigation.replace('UserSetup');
+      navigation.replace('ProfileSetup');
     }
   };
 
   const skip = () => {
-    navigation.replace('UserSetup');
+    navigation.replace('ProfileSetup');
   };
 
   const renderSlide = ({ item }: { item: typeof slides[0] }) => (
     <View style={styles.slide}>
-      <Text style={styles.icon}>{item.icon}</Text>
+      <MaterialIcons name={item.icon as any} size={80} color={colors.primary} />
       <Text style={styles.title}>{item.title}</Text>
       <Text style={styles.subtitle}>{item.subtitle}</Text>
     </View>
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <TouchableOpacity onPress={skip} style={styles.skipButton}>
         <Text style={styles.skipText}>Skip</Text>
       </TouchableOpacity>
@@ -104,11 +107,12 @@ export default function OnboardingScreen({ navigation }: Props) {
         </View>
 
         <Button
-          title={currentIndex === slides.length - 1 ? 'Get Started' : 'Next'}
           onPress={goNext}
           size="lg"
-          fullWidth
-        />
+          style={{ width: '100%' }}
+        >
+          {currentIndex === slides.length - 1 ? 'Get Started' : 'Next'}
+        </Button>
       </View>
     </View>
   );
@@ -117,8 +121,7 @@ export default function OnboardingScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
-    paddingTop: 60,
+    backgroundColor: colors.bg,
   },
   skipButton: {
     alignSelf: 'flex-end',
@@ -132,7 +135,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
   },
-  icon: { fontSize: 80, marginBottom: spacing.xl },
   title: {
     color: colors.text,
     fontSize: fontSize.title,

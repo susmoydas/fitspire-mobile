@@ -2,22 +2,33 @@ export type Gender = 'male' | 'female' | 'other';
 
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
 
+export type FitnessGoal = 'fat_loss' | 'muscle_gain' | 'general_fitness' | 'improve_stamina' | 'stay_active' | 'improve_flexibility';
+
 export type TrainingPace = 'slow' | 'moderate' | 'fast';
 
-export type ExerciseCategory = 'All' | 'Chest' | 'Back' | 'Arms' | 'Core' | 'Legs';
+export type ExerciseCategory = 'All' | 'Chest' | 'Back' | 'Arms' | 'Core' | 'Legs' | 'Shoulder';
+
+export type HeightUnit = 'cm' | 'ft_in';
+export type WeightUnit = 'kg';
+export type DistanceUnit = 'km';
 
 export interface UserProfile {
   gender: Gender;
   age: number;
   height: number;
+  heightUnit: HeightUnit;
   weight: number;
-  goalWeight: number;
+  fitnessGoal: FitnessGoal;
   experience: ExperienceLevel;
-  maxReps: number;
-  trainingDays: number[];
-  sessionDuration: number;
-  pace: TrainingPace;
   onboardingCompleted: boolean;
+  stepGoal: number;
+  workoutDaysPerWeek: number;
+  preferredWorkoutDuration: number;
+  maxReps?: number;
+  trainingDays?: number[];
+  sessionDuration?: number;
+  pace?: TrainingPace;
+  goalWeight?: number;
 }
 
 export interface Set {
@@ -25,6 +36,25 @@ export interface Set {
   kg: number;
   reps: number;
   completed: boolean;
+}
+
+export type Difficulty = 'Beginner' | 'Intermediate' | 'Advanced';
+
+export type Equipment =
+  | 'Barbell'
+  | 'Dumbbell'
+  | 'Bodyweight'
+  | 'Machine'
+  | 'Cable'
+  | 'Kettlebell'
+  | 'Band';
+
+export interface FormGuide {
+  setup: string;
+  movement: string;
+  breathing: string;
+  mistakes: string;
+  safety: string;
 }
 
 export interface Exercise {
@@ -36,6 +66,23 @@ export interface Exercise {
   instructions: string[];
   defaultSets: number;
   defaultReps: number;
+  equipment: Equipment;
+  difficulty: Difficulty;
+  restSeconds: number;
+  formGuide?: FormGuide;
+  targetMuscles: string[];
+  bodyPart?: string;
+  primaryTarget?: string;
+  secondaryMuscles?: string[];
+  gifUrl?: string;
+  imageUrls?: string[];
+  description?: string;
+}
+
+export interface WorkoutExercise {
+  exerciseId: string;
+  sets: Set[];
+  restTimer?: number;
 }
 
 export interface WorkoutSession {
@@ -46,24 +93,23 @@ export interface WorkoutSession {
   completed: boolean;
   startedAt: string;
   completedAt?: string;
+  name?: string;
+  calories?: number;
 }
 
-export interface WorkoutExercise {
-  exerciseId: string;
-  sets: Set[];
-  restTimer?: number;
-}
-
-export interface Meal {
-  id: string;
-  name: string;
+export interface CompletedWorkout {
+  workoutId: string;
+  workoutTitle: string;
+  completedAt: string;
+  duration: number;
+  exercisesCompleted: number;
+  totalExercises: number;
   calories: number;
-  protein?: number;
-  carbs?: number;
-  fat?: number;
-  notes?: string;
-  date: string;
-  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  category: string;
+  difficulty: string;
+  targetMuscles: string[];
+  planId?: string;
+  source?: string;
 }
 
 export interface DailyActivity {
@@ -80,6 +126,20 @@ export interface Notification {
   message: string;
   read: boolean;
   createdAt: string;
+  type?: 'warning' | 'info' | 'error' | 'achievement';
+  actionText?: string;
+  actionRoute?: string;
+  persistent?: boolean;
+  dismissible?: boolean;
+}
+
+export interface Achievement {
+  id: string;
+  icon: string;
+  title: string;
+  subtitle: string;
+  unlocked: boolean;
+  unlockedAt?: string;
 }
 
 export interface Goal {
@@ -88,4 +148,43 @@ export interface Goal {
   current: number;
   target: number;
   unit: string;
+}
+
+export type TrainingMode = 'walking' | 'running' | 'riding';
+
+export interface Coordinate {
+  latitude: number;
+  longitude: number;
+  timestamp: number;
+}
+
+export interface TrainingSession {
+  id: string;
+  mode: TrainingMode;
+  date: string;
+  startTime: string;
+  endTime: string;
+  duration: number;
+  distance: number;
+  steps: number;
+  calories: number;
+  route: Coordinate[];
+  avgPace: string;
+  status: 'completed';
+}
+
+export interface ActiveSession {
+  id: string;
+  activityType: TrainingMode;
+  status: 'idle' | 'running' | 'paused';
+  startTime: string | null;
+  endTime: string | null;
+  pausedDurationMs: number;
+  lastPausedAt: string | null;
+  durationSeconds: number;
+  steps: number;
+  distanceKm: number;
+  calories: number;
+  route: Coordinate[];
+  createdAt: string;
 }

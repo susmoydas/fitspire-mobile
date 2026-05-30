@@ -7,36 +7,53 @@ import {
   TouchableOpacity,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { useStore } from '../store/useStore';
-import Input from '../components/Input';
-import Button from '../components/Button';
-import { colors, fontSize, spacing, borderRadius } from '../components/Theme';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { colors, fontSize, spacing, borderRadius } from '../theme/colors';
 import { Gender, ExperienceLevel, TrainingPace } from '../types';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'UserSetup'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'ProfileSetup'>;
 
 const genders: Gender[] = ['male', 'female', 'other'];
 const experiences: ExperienceLevel[] = ['beginner', 'intermediate', 'advanced'];
 const paces: TrainingPace[] = ['slow', 'moderate', 'fast'];
 const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+type HeightUnit = 'cm' | 'ft_in';
+type WeightUnit = 'kg' | 'lb';
+
 export default function UserSetupScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const profile = useStore((s) => s.profile);
   const setProfile = useStore((s) => s.setProfile);
 
+  const safeProfile = profile || {};
+
   const [step, setStep] = useState(0);
-  const [gender, setGender] = useState<Gender | null>(profile.gender || null);
-  const [age, setAge] = useState(profile.age?.toString() || '');
-  const [height, setHeight] = useState(profile.height?.toString() || '');
-  const [weight, setWeight] = useState(profile.weight?.toString() || '');
-  const [experience, setExperience] = useState<ExperienceLevel | null>(profile.experience || null);
-  const [maxReps, setMaxReps] = useState(profile.maxReps?.toString() || '10');
-  const [trainingDays, setTrainingDays] = useState<number[]>(profile.trainingDays || []);
-  const [sessionDuration, setSessionDuration] = useState(profile.sessionDuration?.toString() || '45');
-  const [pace, setPace] = useState<TrainingPace | null>(profile.pace || null);
-  const [goalWeight, setGoalWeight] = useState(profile.goalWeight?.toString() || '');
+  const [gender, setGender] = useState<Gender | null>(safeProfile.gender || null);
+  const [age, setAge] = useState(safeProfile.age?.toString() || '');
+
+  // Height
+  const [heightUnit, setHeightUnit] = useState<HeightUnit>('cm');
+  const [heightCm, setHeightCm] = useState(safeProfile.height?.toString() || '');
+  const [heightFeet, setHeightFeet] = useState('5');
+  const [heightInch, setHeightInch] = useState('8');
+
+  // Weight
+  const [weightUnit, setWeightUnit] = useState<WeightUnit>('kg');
+  const [weightKg, setWeightKg] = useState(safeProfile.weight?.toString() || '');
+  const [weightLb, setWeightLb] = useState('154');
+
+  const [experience, setExperience] = useState<ExperienceLevel | null>(safeProfile.experience || null);
+  const [maxReps, setMaxReps] = useState(safeProfile.maxReps?.toString() || '10');
+  const [trainingDays, setTrainingDays] = useState<number[]>(Array.isArray(safeProfile.trainingDays) ? safeProfile.trainingDays : []);
+  const [sessionDuration, setSessionDuration] = useState(safeProfile.sessionDuration?.toString() || '45');
+  const [pace, setPace] = useState<TrainingPace | null>(safeProfile.pace || null);
+  const [goalWeight, setGoalWeight] = useState(safeProfile.goalWeight?.toString() || '');
 
   const toggleDay = (index: number) => {
     setTrainingDays((prev) =>
@@ -44,12 +61,24 @@ export default function UserSetupScreen({ navigation }: Props) {
     );
   };
 
+  const getHeightCm = (): number => {
+    if (heightUnit === 'cm') return parseInt(heightCm, 10) || 0;
+    const ft = parseInt(heightFeet, 10) || 0;
+    const inc = parseInt(heightInch, 10) || 0;
+    return Math.round(ft * 30.48 + inc * 2.54);
+  };
+
+  const getWeightKg = (): number => {
+    if (weightUnit === 'kg') return parseInt(weightKg, 10) || 0;
+    return Math.round((parseInt(weightLb, 10) || 0) * 0.453592);
+  };
+
   const handleFinish = () => {
     setProfile({
       gender: gender!,
       age: parseInt(age, 10),
-      height: parseInt(height, 10),
-      weight: parseInt(weight, 10),
+      height: getHeightCm(),
+      weight: getWeightKg(),
       goalWeight: parseInt(goalWeight, 10),
       experience: experience!,
       maxReps: parseInt(maxReps, 10),
@@ -83,9 +112,95 @@ export default function UserSetupScreen({ navigation }: Props) {
   const renderBodyStep = () => (
     <View>
       <Text style={styles.stepTitle}>Your Body Stats</Text>
+
+      {/* Age */}
       <Input label="Age" value={age} onChangeText={setAge} keyboardType="numeric" placeholder="e.g. 25" />
-      <Input label="Height (cm)" value={height} onChangeText={setHeight} keyboardType="numeric" placeholder="e.g. 175" />
-      <Input label="Weight (kg)" value={weight} onChangeText={setWeight} keyboardType="numeric" placeholder="e.g. 70" />
+
+      {/* Height */}
+      <Text style={styles.fieldLabel}>Height</Text>
+      <View style={styles.segmentedRow}>
+        <TouchableOpacity
+          style={[styles.segmentPill, heightUnit === 'cm' && styles.segmentActive]}
+          onPress={() => setHeightUnit('cm')}
+        >
+          <Text style={[styles.segmentText, heightUnit === 'cm' && styles.segmentTextActive]}>Centimeter</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.segmentPill, heightUnit === 'ft_in' && styles.segmentActive]}
+          onPress={() => setHeightUnit('ft_in')}
+        >
+          <Text style={[styles.segmentText, heightUnit === 'ft_in' && styles.segmentTextActive]}>Feet / Inch</Text>
+        </TouchableOpacity>
+      </View>
+      {heightUnit === 'cm' ? (
+        <Input
+          label=""
+          value={heightCm}
+          onChangeText={setHeightCm}
+          keyboardType="numeric"
+          placeholder="e.g. 175"
+          containerStyle={{ marginTop: spacing.sm }}
+        />
+      ) : (
+        <View style={styles.dualInputRow}>
+          <View style={styles.dualInputItem}>
+            <Text style={styles.dualLabel}>Feet</Text>
+            <Input
+              label=""
+              value={heightFeet}
+              onChangeText={setHeightFeet}
+              keyboardType="numeric"
+              placeholder="5"
+            />
+          </View>
+          <View style={styles.dualInputItem}>
+            <Text style={styles.dualLabel}>Inch</Text>
+            <Input
+              label=""
+              value={heightInch}
+              onChangeText={setHeightInch}
+              keyboardType="numeric"
+              placeholder="8"
+            />
+          </View>
+        </View>
+      )}
+
+      {/* Weight */}
+      <Text style={[styles.fieldLabel, { marginTop: spacing.md }]}>Weight</Text>
+      <View style={styles.segmentedRow}>
+        <TouchableOpacity
+          style={[styles.segmentPill, weightUnit === 'kg' && styles.segmentActive]}
+          onPress={() => setWeightUnit('kg')}
+        >
+          <Text style={[styles.segmentText, weightUnit === 'kg' && styles.segmentTextActive]}>KG</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.segmentPill, weightUnit === 'lb' && styles.segmentActive]}
+          onPress={() => setWeightUnit('lb')}
+        >
+          <Text style={[styles.segmentText, weightUnit === 'lb' && styles.segmentTextActive]}>Pound / lbs</Text>
+        </TouchableOpacity>
+      </View>
+      {weightUnit === 'kg' ? (
+        <Input
+          label=""
+          value={weightKg}
+          onChangeText={setWeightKg}
+          keyboardType="numeric"
+          placeholder="e.g. 70"
+          containerStyle={{ marginTop: spacing.sm }}
+        />
+      ) : (
+        <Input
+          label=""
+          value={weightLb}
+          onChangeText={setWeightLb}
+          keyboardType="numeric"
+          placeholder="e.g. 154"
+          containerStyle={{ marginTop: spacing.sm }}
+        />
+      )}
     </View>
   );
 
@@ -166,7 +281,7 @@ export default function UserSetupScreen({ navigation }: Props) {
         placeholder="e.g. 65"
       />
       <Text style={styles.goalSummary}>
-        Current: {weight} kg → Goal: {goalWeight || '?'} kg
+        Current: {getWeightKg()} kg → Goal: {goalWeight || '?'} kg
       </Text>
     </View>
   );
@@ -176,7 +291,7 @@ export default function UserSetupScreen({ navigation }: Props) {
   const canProceed = () => {
     switch (step) {
       case 0: return !!gender;
-      case 1: return !!age && !!height && !!weight;
+      case 1: return !!age && getHeightCm() > 0 && getWeightKg() > 0;
       case 2: return !!experience && !!maxReps;
       case 3: return trainingDays.length > 0 && !!sessionDuration && !!pace;
       case 4: return !!goalWeight;
@@ -186,7 +301,7 @@ export default function UserSetupScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.progressContainer}>
+      <View style={[styles.progressContainer, { paddingTop: insets.top + spacing.md }]}>
         {steps.map((_, i) => (
           <View key={i} style={[styles.progressDot, i <= step && styles.progressActive]} />
         ))}
@@ -203,25 +318,25 @@ export default function UserSetupScreen({ navigation }: Props) {
 
       <View style={styles.footer}>
         {step > 0 && (
-          <Button title="Back" onPress={() => setStep(step - 1)} variant="ghost" style={{ marginRight: spacing.sm }} />
+          <Button onPress={() => setStep(step - 1)} variant="ghost" style={{ marginRight: spacing.sm }}>Back</Button>
         )}
         <Button
-          title={step === steps.length - 1 ? 'Complete Setup' : 'Next'}
           onPress={() => (step === steps.length - 1 ? handleFinish() : setStep(step + 1))}
           disabled={!canProceed()}
           style={{ flex: 1 }}
-        />
+        >
+          {step === steps.length - 1 ? 'Complete Setup' : 'Next'}
+        </Button>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: colors.bg },
   progressContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    paddingTop: 60,
     paddingBottom: spacing.md,
     gap: 6,
   },
@@ -241,6 +356,7 @@ const styles = StyleSheet.create({
   stepCounter: { color: colors.textSecondary, fontSize: fontSize.sm, marginBottom: spacing.lg },
   stepTitle: { color: colors.text, fontSize: fontSize.xxl, fontWeight: '700', marginBottom: spacing.md },
   stepSubtitle: { color: colors.textSecondary, fontSize: fontSize.sm, marginBottom: spacing.md },
+  fieldLabel: { color: colors.text, fontSize: fontSize.md, fontWeight: '600', marginBottom: spacing.sm },
   optionsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   optionCard: {
     flex: 1,
@@ -278,5 +394,43 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  segmentedRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  segmentPill: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.full,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  segmentActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '20',
+  },
+  segmentText: {
+    color: colors.textSecondary,
+    fontWeight: '600',
+    fontSize: fontSize.sm,
+  },
+  segmentTextActive: {
+    color: colors.primary,
+  },
+  dualInputRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.sm,
+  },
+  dualInputItem: {
+    flex: 1,
+  },
+  dualLabel: {
+    color: colors.textSecondary,
+    fontSize: fontSize.xs,
+    marginBottom: spacing.xs,
   },
 });

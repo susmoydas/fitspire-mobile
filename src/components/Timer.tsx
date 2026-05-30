@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, fontSize, spacing } from './Theme';
+import { colors, fontSize, spacing } from '../theme/colors';
 
 interface TimerProps {
   seconds: number;

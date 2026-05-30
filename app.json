@@ -4,6 +4,7 @@
     "slug": "fitspire-mobile",
     "version": "0.1.0",
     "sdkVersion": "54.0.0",
+    "jsEngine": "hermes",
     "platforms": [
       "android",
       "ios",
@@ -18,16 +19,77 @@
       "resizeMode": "contain",
       "backgroundColor": "#0F172A"
     },
+    "plugins": [
+      [
+        "expo-sensors",
+        {
+          "isPedometer": true
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Fitspire needs your location even when the app is in the background to track your walking, running, and cycling routes.",
+          "locationWhenInUsePermission": "Allow Fitspire to use your location to track your workouts.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#6C5CFF"
+        }
+      ],
+      "expo-font",
+      "react-native-health",
+      "react-native-health-connect",
+            "expo-asset",
+            [
+                "expo-build-properties",
+                {
+                    "android": {
+                        "minSdkVersion": 26
+                    }
+                }
+            ]
+        ],
     "android": {
       "package": "com.fitspire.mobile",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F172A"
-      }
+      },
+      "permissions": [
+        "ACCESS_BACKGROUND_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_SPEED_AND_DISTANCE",
+        "android.permission.health.READ_EXERCISE"
+      ]
     },
     "ios": {
       "bundleIdentifier": "com.fitspire.mobile",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location",
+          "fetch",
+          "processing"
+        ],
+        "NSHealthShareUsageDescription": "Fitspire reads your health data to track your steps, workouts, and heart rate for personalized fitness insights.",
+        "NSHealthUpdateUsageDescription": "Fitspire saves your workout data to the Health app to keep your fitness record complete.",
+        "NSHealthClinicalHealthRecordsShareUsageDescription": "Fitspire can read clinical health records to provide better fitness recommendations."
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true,
+        "com.apple.developer.healthkit.access": []
+      }
     },
     "extra": {
       "eas": {

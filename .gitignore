@@ -7,3 +7,10 @@ node_modules/
 *.mobileprovision
 *.orig.*
 web-build/
+.env
+android/.gradle/
+android/build/
+android/app/build/
+android/.idea/
+.DS_Store
+*.zip

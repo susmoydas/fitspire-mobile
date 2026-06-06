@@ -511,6 +511,36 @@ export async function fetchAllExercisesDb(): Promise<Exercise[]> {
   return allExercises;
 }
 
+async function fetchRapidExercisesPaginated(pageSize = 100): Promise<RapidExercise[]> {
+  const all: RapidExercise[] = [];
+  let offset = 0;
+  while (true) {
+    const page = await fetchRapidApi<RapidExercise[]>(
+      `/exercises?offset=${offset}&limit=${pageSize}`,
+    );
+    if (!page || page.length === 0) break;
+    all.push(...page);
+    if (page.length < pageSize) break;
+    offset += pageSize;
+    if (offset > 5000) break;
+  }
+  return all;
+}
+
+export async function fetchAllExercisesPaginated(): Promise<Exercise[]> {
+  const cacheKey = 'all-exercises-paginated';
+  const cached = await getCached<Exercise[]>(cacheKey);
+  if (cached) return cached;
+
+  const allExercises = await withFallback(
+    () => fetchRapidExercisesPaginated(100).then(r => r.map(normalizeRapidExercise)),
+    () => fetchAllOssExercises().then(r => r.map(normalizeOssExercise)),
+  );
+
+  await setCache(cacheKey, allExercises);
+  return allExercises;
+}
+
 export function clearExerciseDbCache(): Promise<void> {
   return AsyncStorage.clear();
 }

@@ -106,6 +106,25 @@ interface FitspireState {
   // Health Connectors
   healthConnectors: Record<string, boolean>;
   setHealthConnectors: (connectors: Record<string, boolean>) => void;
+
+  // Health Connect opt-in (user's choice about the explainer screen)
+  healthConnectOptIn: 'pending' | 'granted' | 'denied' | 'dismissed';
+  setHealthConnectOptIn: (v: 'pending' | 'granted' | 'denied' | 'dismissed') => void;
+
+  // Tracking toggles (user-controlled)
+  stepTrackingEnabled: boolean;
+  setStepTrackingEnabled: (v: boolean) => void;
+  locationTrackingEnabled: boolean;
+  setLocationTrackingEnabled: (v: boolean) => void;
+  backgroundNotificationEnabled: boolean;
+  setBackgroundNotificationEnabled: (v: boolean) => void;
+
+  // First-install decision gate
+  stepTrackingDecision: 'pending' | 'allowed' | 'declined';
+  setStepTrackingDecision: (v: 'pending' | 'allowed' | 'declined') => void;
+
+  // Hard reset today's step counters
+  clearTodaySteps: () => void;
 }
 
 export const useStore = create<FitspireState>()(
@@ -276,6 +295,33 @@ export const useStore = create<FitspireState>()(
       healthConnectors: {},
       setHealthConnectors: (connectors) => set({ healthConnectors: connectors }),
 
+      // Health Connect opt-in
+      healthConnectOptIn: 'pending',
+      setHealthConnectOptIn: (v) => set({ healthConnectOptIn: v }),
+
+  // Tracking toggles — default OFF so the app never asks for permissions
+  // until the user explicitly opts in on the Step Tracking onboarding screen.
+  stepTrackingEnabled: false,
+  setStepTrackingEnabled: (v) => set({ stepTrackingEnabled: v }),
+  locationTrackingEnabled: false,
+  setLocationTrackingEnabled: (v) => set({ locationTrackingEnabled: v }),
+  backgroundNotificationEnabled: false,
+  setBackgroundNotificationEnabled: (v) => set({ backgroundNotificationEnabled: v }),
+
+      // First-install decision gate
+      stepTrackingDecision: 'pending',
+      setStepTrackingDecision: (v) => set({ stepTrackingDecision: v }),
+
+      // Hard reset today's step counters
+      clearTodaySteps: () => {
+        const todayKey = new Date().toISOString().split('T')[0];
+        set((s) => ({
+          todaySteps: 0,
+          todayDate: todayKey,
+          activityLog: s.activityLog.filter((a) => a.date !== todayKey),
+        }));
+      },
+
       // Training Sessions
       trainingSessions: [],
       addTrainingSession: (session) =>
@@ -288,10 +334,44 @@ export const useStore = create<FitspireState>()(
     {
       name: 'fitspire-storage',
       storage: persistStorage,
-      version: 1,
+      version: 2,
+      migrate: (persisted: any, version: number) => {
+        if (!persisted) return persisted;
+        if (version < 2) {
+          return {
+            ...persisted,
+            stepTrackingEnabled: persisted.stepTrackingEnabled ?? true,
+            locationTrackingEnabled: persisted.locationTrackingEnabled ?? false,
+            backgroundNotificationEnabled: persisted.backgroundNotificationEnabled ?? true,
+            stepTrackingDecision: persisted.stepTrackingDecision ?? 'allowed',
+          };
+        }
+        return persisted;
+      },
       merge: (persisted, current) => {
         if (!persisted || typeof persisted !== 'object') return current;
-        return { ...current, ...(persisted as Record<string, unknown>) };
+        const p = persisted as Record<string, unknown>;
+        const out: FitspireState = {
+          ...current,
+          ...(p as Partial<FitspireState>),
+        };
+        out.stepTrackingEnabled =
+          typeof p.stepTrackingEnabled === 'boolean'
+            ? (p.stepTrackingEnabled as boolean)
+            : current.stepTrackingEnabled;
+        out.locationTrackingEnabled =
+          typeof p.locationTrackingEnabled === 'boolean'
+            ? (p.locationTrackingEnabled as boolean)
+            : current.locationTrackingEnabled;
+        out.backgroundNotificationEnabled =
+          typeof p.backgroundNotificationEnabled === 'boolean'
+            ? (p.backgroundNotificationEnabled as boolean)
+            : current.backgroundNotificationEnabled;
+        out.stepTrackingDecision =
+          p.stepTrackingDecision === 'allowed' || p.stepTrackingDecision === 'declined'
+            ? (p.stepTrackingDecision as FitspireState['stepTrackingDecision'])
+            : current.stepTrackingDecision;
+        return out;
       },
     }
   )

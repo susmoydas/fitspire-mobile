@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Switch,
+  Alert,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -14,7 +17,15 @@ import { useStore } from '../store/useStore';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, fontSize, spacing, borderRadius } from '../theme/colors';
 import FitnessConnectorCard from '../components/FitnessConnectorCard';
+import PermissionStatusPill from '../components/PermissionStatusPill';
 import { useHealthIntegration } from '../hooks/useHealthIntegration';
+import {
+  refreshPermissionStatuses,
+  requestAllPermissions,
+  openAppSettings,
+  type PermissionStatuses,
+  type PermissionLevel,
+} from '../services/permissions';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -101,6 +112,9 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Tracking & Permissions */}
+        <TrackingPermissionsSection />
+
         {/* Connected Devices */}
         <View style={styles.sectionCard}>
           {connectors.map((item) => (
@@ -142,6 +156,208 @@ export default function ProfileScreen() {
 
         <View style={{ height: spacing.xxl }} />
       </ScrollView>
+    </View>
+  );
+}
+
+function TrackingPermissionsSection() {
+  const stepTrackingEnabled = useStore((s) => s.stepTrackingEnabled);
+  const setStepTrackingEnabled = useStore((s) => s.setStepTrackingEnabled);
+  const locationTrackingEnabled = useStore((s) => s.locationTrackingEnabled);
+  const setLocationTrackingEnabled = useStore((s) => s.setLocationTrackingEnabled);
+  const backgroundNotificationEnabled = useStore((s) => s.backgroundNotificationEnabled);
+  const setBackgroundNotificationEnabled = useStore(
+    (s) => s.setBackgroundNotificationEnabled,
+  );
+
+  const [statuses, setStatuses] = useState<PermissionStatuses>({
+    activityRecognition: 'undetermined',
+    location: 'undetermined',
+    notification: 'undetermined',
+  });
+  const [busy, setBusy] = useState<'step' | 'location' | 'notif' | null>(null);
+
+  const refresh = useCallback(async () => {
+    const s = await refreshPermissionStatuses();
+    setStatuses(s);
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const handleStepToggle = async (next: boolean) => {
+    if (busy) return;
+    if (!next) {
+      setStepTrackingEnabled(false);
+      return;
+    }
+    setBusy('step');
+    try {
+      const result = await requestAllPermissions({ askLocation: false, askNotification: true });
+      setStatuses(result);
+      if (result.activityRecognition === 'denied' || result.activityRecognition === 'unavailable') {
+        Alert.alert(
+          'Permission required',
+          'Step tracking needs the Physical Activity permission. Open Settings to allow it.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => openAppSettings() },
+          ],
+        );
+        setStepTrackingEnabled(false);
+        return;
+      }
+      setStepTrackingEnabled(true);
+      if (result.notification !== 'granted') {
+        setBackgroundNotificationEnabled(false);
+      } else {
+        setBackgroundNotificationEnabled(true);
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleLocationToggle = async (next: boolean) => {
+    if (busy) return;
+    if (!next) {
+      setLocationTrackingEnabled(false);
+      return;
+    }
+    setBusy('location');
+    try {
+      const result = await requestAllPermissions({ askLocation: true, askNotification: false });
+      setStatuses(result);
+      if (result.location === 'denied') {
+        Alert.alert(
+          'Permission required',
+          'Location Access needs the Location permission. Open Settings to allow it.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => openAppSettings() },
+          ],
+        );
+        setLocationTrackingEnabled(false);
+        return;
+      }
+      setLocationTrackingEnabled(true);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleNotifToggle = async (next: boolean) => {
+    if (busy) return;
+    setBusy('notif');
+    try {
+      if (!next) {
+        setBackgroundNotificationEnabled(false);
+        return;
+      }
+      const result = await requestAllPermissions({ askLocation: false, askNotification: true });
+      setStatuses(result);
+      if (result.notification === 'granted') {
+        setBackgroundNotificationEnabled(true);
+      } else {
+        setBackgroundNotificationEnabled(false);
+        Alert.alert(
+          'Notification permission',
+          'Notifications are blocked. Open Settings to allow them.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => openAppSettings() },
+          ],
+        );
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const stepStatus: PermissionLevel =
+    !stepTrackingEnabled
+      ? 'denied'
+      : statuses.activityRecognition;
+  const notifStatus: PermissionLevel =
+    !backgroundNotificationEnabled
+      ? 'denied'
+      : statuses.notification;
+  const locationStatus: PermissionLevel =
+    !locationTrackingEnabled
+      ? 'denied'
+      : statuses.location;
+
+  return (
+    <View style={styles.sectionCard}>
+      <View style={styles.trackingHeader}>
+        <Text style={styles.sectionTitle}>Tracking & Permissions</Text>
+        <TouchableOpacity onPress={refresh} style={styles.recheckBtn} activeOpacity={0.7}>
+          <MaterialIcons name="refresh" size={14} color={colors.primary} />
+          <Text style={styles.recheckText}>Recheck</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.trackingRow}>
+        <View style={styles.trackingIcon}>
+          <MaterialIcons name="directions-walk" size={20} color={colors.primary} />
+        </View>
+        <View style={styles.trackingInfo}>
+          <Text style={styles.trackingLabel}>Step Tracking</Text>
+          <View style={styles.trackingPill}>
+            <PermissionStatusPill status={stepStatus} />
+          </View>
+        </View>
+        <Switch
+          value={stepTrackingEnabled}
+          onValueChange={handleStepToggle}
+          disabled={busy !== null}
+          trackColor={{ false: '#3A3A3C', true: colors.primary + '80' }}
+          thumbColor={stepTrackingEnabled ? colors.primary : '#8E8E93'}
+        />
+      </View>
+
+      <View style={styles.trackingRow}>
+        <View style={styles.trackingIcon}>
+          <MaterialIcons name="place" size={20} color={colors.info} />
+        </View>
+        <View style={styles.trackingInfo}>
+          <Text style={styles.trackingLabel}>Location Access</Text>
+          <Text style={styles.trackingHint}>
+            {Platform.OS === 'ios' ? 'iOS will ask again' : 'Used only during a workout'}
+          </Text>
+          <View style={styles.trackingPill}>
+            <PermissionStatusPill status={locationStatus} />
+          </View>
+        </View>
+        <Switch
+          value={locationTrackingEnabled}
+          onValueChange={handleLocationToggle}
+          disabled={busy !== null}
+          trackColor={{ false: '#3A3A3C', true: colors.info + '80' }}
+          thumbColor={locationTrackingEnabled ? colors.info : '#8E8E93'}
+        />
+      </View>
+
+      <View style={[styles.trackingRow, styles.trackingRowLast]}>
+        <View style={styles.trackingIcon}>
+          <MaterialIcons name="notifications-active" size={20} color={colors.success} />
+        </View>
+        <View style={styles.trackingInfo}>
+          <Text style={styles.trackingLabel}>Background Notification</Text>
+          <Text style={styles.trackingHint}>Step tracker notification on Home</Text>
+          <View style={styles.trackingPill}>
+            <PermissionStatusPill status={notifStatus} />
+          </View>
+        </View>
+        <Switch
+          value={backgroundNotificationEnabled}
+          onValueChange={handleNotifToggle}
+          disabled={busy !== null}
+          trackColor={{ false: '#3A3A3C', true: colors.success + '80' }}
+          thumbColor={backgroundNotificationEnabled ? colors.success : '#8E8E93'}
+        />
+      </View>
     </View>
   );
 }
@@ -300,5 +516,64 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontSize: fontSize.md,
     fontWeight: '600',
+  },
+
+  // Tracking & Permissions
+  trackingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  recheckBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    backgroundColor: colors.cardElevated,
+    borderRadius: borderRadius.full,
+  },
+  recheckText: {
+    color: colors.primary,
+    fontSize: fontSize.xs,
+    fontWeight: '700',
+  },
+  trackingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  trackingRowLast: {
+    borderBottomWidth: 0,
+  },
+  trackingIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.cardElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trackingInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  trackingLabel: {
+    color: colors.text,
+    fontSize: fontSize.md,
+    fontWeight: '700',
+  },
+  trackingHint: {
+    color: colors.textMuted,
+    fontSize: fontSize.xs,
+    fontWeight: '500',
+  },
+  trackingPill: {
+    alignSelf: 'flex-start',
+    marginTop: 2,
   },
 });

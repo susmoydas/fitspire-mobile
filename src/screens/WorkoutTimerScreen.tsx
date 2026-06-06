@@ -1,59 +1,48 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Animated,
+  Dimensions,
+  TextInput,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { useStore } from '../store/useStore';
 import { MaterialIcons } from '@expo/vector-icons';
-import { colors, fontSize, spacing, borderRadius } from '../theme/colors';
-import { Image } from 'expo-image';
-import SetTrackerRow from '../components/SetTrackerRow';
-import BottomSheetModal from '../components/BottomSheetModal';
+import * as Haptics from 'expo-haptics';
+import { colors, fontSize, spacing, borderRadius, buttonHeight } from '../theme/colors';
 import ExerciseMediaCard from '../components/ExerciseMediaCard';
-import InstructionSteps from '../components/InstructionSteps';
-import { getWorkoutExerciseImageUrls } from '../utils/image';
-import AIFitnessAssistant from '../components/AIFitnessAssistant';
-import AIFloatingButton from '../components/AIFloatingButton';
-import {
-  setCurrentWorkoutSessionForAI,
-  clearFitnessAIScreenContext,
-} from '../services/fitnessAiContext';
+import AppModal from '../components/AppModal';
+import BottomSheetModal from '../components/BottomSheetModal';
 import type { WorkoutPlan } from '../data/workoutPlans';
+import type { CompletedSetEntry } from '../types';
 
 type TimerRoute = RouteProp<RootStackParamList, 'WorkoutTimer'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
+type Phase = 'getReady' | 'active' | 'rest' | 'transition' | 'finished';
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const MEDIA_SIDE = 16;
+const MEDIA_WIDTH = SCREEN_WIDTH - MEDIA_SIDE * 2;
+const MEDIA_HEIGHT = MEDIA_WIDTH;
+const MEDIA_RADIUS = 24;
 
-const CATEGORY_COLORS: Record<string, string> = {
-  Chest: '#EF4444',
-  Back: '#10B981',
-  Arms: '#F59E0B',
-  Core: '#3B82F6',
-  Legs: '#FF7A1A',
-  Shoulder: '#EC4899',
-};
-
-const TIMED_KEYWORDS = ['plank', 'hold', 'stretch', 'wall sit', 'bridge', 'dead hang', 'hollow', 'pose'];
-
-const MOTIVATION_MESSAGES = [
-  'Great job! Keep going!',
-  'You are doing amazing!',
-  'Almost there - stay strong!',
-  'One rep at a time!',
-  'Every rep counts!',
-  'You have got this!',
-  'Push through - you are stronger than you think!',
-  'Consistency is key - well done!',
-  'Breathe and focus!',
-  'Making progress every second!',
-];
+if (require('react-native').Platform.OS === 'android' && (require('react-native').UIManager as any).setLayoutAnimationEnabledExperimental) {
+  (require('react-native').UIManager as any).setLayoutAnimationEnabledExperimental(true);
+}
 
 function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  const s = Math.max(0, Math.floor(seconds));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m.toString().padStart(2, '0')}:${r.toString().padStart(2, '0')}`;
 }
 
 export default function WorkoutTimerScreen() {
@@ -69,139 +58,109 @@ export default function WorkoutTimerScreen() {
   const exercises = plan.exercises;
 
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
-  const [currentSet, setCurrentSet] = useState(1);
-  const [phase, setPhase] = useState<'active' | 'rest' | 'completed' | 'finished'>('active');
-  const [exerciseTimer, setExerciseTimer] = useState(0);
+  const [phase, setPhase] = useState<Phase>('getReady');
+  const [countdown, setCountdown] = useState(3);
   const [restTimer, setRestTimer] = useState(0);
+  const [timeAccum, setTimeAccum] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const [completedExerciseIds, setCompletedExerciseIds] = useState<Set<string>>(new Set());
-  const [totalDuration, setTotalDuration] = useState(0);
-  const [motivationIndex, setMotivationIndex] = useState(0);
-  const [setData, setSetData] = useState<{ kg: number; reps: number; completed: boolean }[]>([]);
-  const [showFinishSheet, setShowFinishSheet] = useState(false);
-  const [showCompleteSheet, setShowCompleteSheet] = useState(false);
-  const [showQuitSheet, setShowQuitSheet] = useState(false);
-  const [showAIAssistant, setShowAIAssistant] = useState(false);
+  const [isTimedRunning, setIsTimedRunning] = useState(false);
+  const [showFormGuide, setShowFormGuide] = useState(false);
+  const [showPauseModal, setShowPauseModal] = useState(false);
+  const [showEndSheet, setShowEndSheet] = useState(false);
+  const [setLog, setSetLog] = useState<CompletedSetEntry[]>([]);
 
-  const startTimeRef = useRef(Date.now());
   const restIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const slideAnim = useRef(new Animated.Value(0)).current;
-  const checkScale = useRef(new Animated.Value(0)).current;
+  const totalIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownAnim = useRef(new Animated.Value(0)).current;
+  const setLogRef = useRef<CompletedSetEntry[]>([]);
 
   const currentExercise = exercises[currentExerciseIndex];
+  const totalExercises = exercises.length;
   const isLastExercise = currentExerciseIndex >= exercises.length - 1;
   const nextExercise = !isLastExercise ? exercises[currentExerciseIndex + 1] : null;
-  const totalExercises = exercises.length;
-  const allSetsComplete = currentSet > (currentExercise?.sets || 0);
-  const totalSets = useMemo(() => exercises.reduce((s, e) => s + e.sets, 0), [exercises]);
+  const totalSetsAll = useMemo(() => exercises.reduce((s, e) => s + e.sets, 0), [exercises]);
+  const isTimedExercise = currentExercise?.type === 'time';
+  const isWeightedExercise = currentExercise?.type === 'weight_reps';
+
+  const targetSeconds = isTimedExercise ? Math.max(1, currentExercise?.reps || 30) : 0;
+  const defaultReps = currentExercise?.reps || 10;
+
   const completedSetCount = useMemo(() => {
     let count = 0;
     for (let i = 0; i < currentExerciseIndex; i++) count += exercises[i].sets;
-    count += currentSet - 1;
+    count += setLog.filter((s) => s.completed).length;
     return count;
-  }, [currentExerciseIndex, currentSet, exercises]);
-  const progress = totalSets > 0 ? completedSetCount / totalSets : 0;
-  const isTimed = useMemo(
-    () => TIMED_KEYWORDS.some((k) => currentExercise?.name.toLowerCase().includes(k)),
-    [currentExercise],
-  );
-  const categoryColor = CATEGORY_COLORS[currentExercise?.category || ''] || colors.primary;
+  }, [currentExerciseIndex, setLog, exercises]);
+  const overallProgress = totalSetsAll > 0 ? completedSetCount / totalSetsAll : 0;
 
-  const finishWorkout = useCallback(() => {
-    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
-
-    const exCompleted = Math.min(completedExerciseIds.size + 1, exercises.length);
-    const duration = totalDuration;
-
-    addCompletedWorkout({
-      workoutId: plan.id,
-      workoutTitle: plan.title,
-      completedAt: new Date().toISOString(),
-      duration,
-      exercisesCompleted: exCompleted,
-      totalExercises: exercises.length,
-      calories: plan.calories,
-      category: plan.category,
-      difficulty: plan.difficulty,
-      targetMuscles: plan.targetMuscles,
-      planId: plan.id,
-      source: plan.source || 'home',
-    });
-
-    navigation.replace('WorkoutComplete', {
-      workoutId: plan.id,
-      duration,
-      exercisesCompleted: exCompleted,
-      totalExercises: exercises.length,
-      calories: plan.calories,
-      workoutTitle: plan.title,
-      category: plan.category,
-      difficulty: plan.difficulty,
-      targetMusclesJson: JSON.stringify(plan.targetMuscles),
-      planId: plan.id,
-    });
-  }, [totalDuration, completedExerciseIds, exercises.length, plan, addCompletedWorkout, navigation]);
-
-  const finishWorkoutRef = useRef(finishWorkout);
-  useEffect(() => { finishWorkoutRef.current = finishWorkout; }, [finishWorkout]);
-
-  const goToNextExercise = useCallback(() => {
-    if (currentExerciseIndex >= exercises.length - 1) {
-      setPhase('finished');
-      finishWorkoutRef.current();
-    } else {
-      setCompletedExerciseIds((prev) => new Set(prev).add(currentExercise.exerciseId));
-      setCurrentExerciseIndex((prev) => prev + 1);
-      setCurrentSet(1);
-      setExerciseTimer(0);
-      setPhase('active');
-    }
-  }, [currentExerciseIndex, exercises.length, currentExercise?.exerciseId]);
-
-  const goToNextRef = useRef(goToNextExercise);
-  useEffect(() => { goToNextRef.current = goToNextExercise; }, [goToNextExercise]);
+  const currentSetNumber = useMemo(() => {
+    const idx = setLog.findIndex((s) => !s.completed);
+    return idx === -1 ? setLog.length : idx + 1;
+  }, [setLog]);
 
   useEffect(() => {
-    setCurrentWorkoutSessionForAI(plan, currentExerciseIndex);
-  }, [plan, currentExerciseIndex]);
+    setLogRef.current = setLog;
+  }, [setLog]);
 
   useEffect(() => {
-    const nextIdx = currentExerciseIndex + 1;
-    if (nextIdx < exercises.length) {
-      const urls = getWorkoutExerciseImageUrls(exercises[nextIdx]);
-      urls.forEach((url) => { if (url) Image.prefetch(url); });
-    }
-  }, [currentExerciseIndex, exercises]);
-
-  useEffect(() => () => clearFitnessAIScreenContext(), []);
-
-  useEffect(() => {
-    slideAnim.setValue(0);
-    Animated.spring(slideAnim, {
-      toValue: 1,
-      tension: 50,
-      friction: 10,
-      useNativeDriver: true,
-    }).start();
-    if (currentExercise) {
-      setSetData(
-        [...Array(currentExercise.sets)].map(() => ({
-          kg: 0,
-          reps: currentExercise.reps,
-          completed: false,
-        }))
-      );
-    }
+    if (!currentExercise) return;
+    const isTimed = currentExercise.type === 'time';
+    const initial: CompletedSetEntry[] = Array.from({ length: currentExercise.sets }).map(() => ({
+      kg: isTimed ? null : null,
+      reps: isTimed ? 0 : defaultReps,
+      timeSec: isTimed ? targetSeconds : undefined,
+      completed: false,
+    }));
+    setSetLog(initial);
+    setTimeAccum(0);
+    setIsTimedRunning(false);
+    setShowFormGuide(false);
   }, [currentExerciseIndex]);
 
   useEffect(() => {
     if (isPaused || phase === 'finished') return;
-    const interval = setInterval(() => {
-      setTotalDuration((p) => p + 1);
-      if (phase === 'active') setExerciseTimer((p) => p + 1);
-    }, 1000);
-    return () => clearInterval(interval);
+    totalIntervalRef.current = setInterval(() => {}, 1000);
+    return () => {
+      if (totalIntervalRef.current) clearInterval(totalIntervalRef.current);
+    };
   }, [isPaused, phase]);
+
+  useEffect(() => {
+    if (phase !== 'getReady') return;
+    setCountdown(3);
+    countdownAnim.setValue(0);
+    Animated.spring(countdownAnim, {
+      toValue: 1,
+      tension: 60,
+      friction: 6,
+      useNativeDriver: true,
+    }).start();
+
+    countdownIntervalRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+          setPhase('active');
+          return 0;
+        }
+        countdownAnim.setValue(0);
+        Animated.spring(countdownAnim, {
+          toValue: 1,
+          tension: 60,
+          friction: 6,
+          useNativeDriver: true,
+        }).start();
+        Haptics.selectionAsync().catch(() => {});
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    };
+  }, [phase]);
 
   useEffect(() => {
     if (isPaused || phase !== 'rest') return;
@@ -209,6 +168,7 @@ export default function WorkoutTimerScreen() {
       setRestTimer((prev) => {
         if (prev <= 1) {
           if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+          setPhase('active');
           return 0;
         }
         return prev - 1;
@@ -220,121 +180,229 @@ export default function WorkoutTimerScreen() {
   }, [isPaused, phase]);
 
   useEffect(() => {
-    if (phase === 'rest' && restTimer === 0 && !isPaused && currentExercise) {
-      const id = setTimeout(() => goToNextRef.current(), 100);
-      return () => clearTimeout(id);
-    }
-  }, [phase, restTimer, isPaused, currentExercise]);
-
-  useEffect(() => {
-    if (phase === 'completed') {
-      Animated.sequence([
-        Animated.spring(checkScale, {
-          toValue: 1,
-          tension: 100,
-          friction: 6,
-          useNativeDriver: true,
-        }),
-        Animated.delay(1200),
-      ]).start(() => {
-        if (isLastExercise) {
-          setPhase('finished');
-          finishWorkoutRef.current();
-        } else {
-          setPhase('rest');
-          setCurrentSet(1);
-          setExerciseTimer(0);
-          setRestTimer(currentExercise.restSeconds || 60);
+    if (isPaused || phase !== 'active' || !isTimedExercise || !isTimedRunning) return;
+    timedIntervalRef.current = setInterval(() => {
+      setTimeAccum((p) => {
+        const next = p + 1;
+        if (next >= targetSeconds) {
+          if (timedIntervalRef.current) clearInterval(timedIntervalRef.current);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          markCurrentSetComplete();
+          return 0;
         }
+        return next;
       });
-    }
-    return () => { checkScale.setValue(0); };
-  }, [phase]);
+    }, 1000);
+    return () => {
+      if (timedIntervalRef.current) clearInterval(timedIntervalRef.current);
+    };
+  }, [isPaused, phase, isTimedExercise, isTimedRunning]);
 
-  const handleCompleteSet = useCallback((setIndex: number) => {
+  const markCurrentSetComplete = useCallback(() => {
+    setSetLog((prev) => {
+      if (!prev.length) return prev;
+      const idx = prev.findIndex((s) => !s.completed);
+      if (idx === -1) return prev;
+      const next = [...prev];
+      next[idx] = { ...next[idx], completed: true };
+      return next;
+    });
+  }, []);
+
+  const finishWorkout = useCallback(() => {
+    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    if (timedIntervalRef.current) clearInterval(timedIntervalRef.current);
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    if (totalIntervalRef.current) clearInterval(totalIntervalRef.current);
+
+    const setLogToSave: { exerciseId: string; sets: CompletedSetEntry[] }[] = exercises.map(
+      (ex) => {
+        if (ex.exerciseId === currentExercise?.exerciseId) {
+          return { exerciseId: ex.exerciseId, sets: setLogRef.current };
+        }
+        return { exerciseId: ex.exerciseId, sets: [] };
+      },
+    );
+
+    const allCompleted = setLogRef.current.every((s) => s.completed);
+    const completedCount = allCompleted ? exercises.length : currentExerciseIndex;
+
+    addCompletedWorkout({
+      workoutId: plan.id,
+      workoutTitle: plan.title,
+      completedAt: new Date().toISOString(),
+      duration: 0,
+      exercisesCompleted: completedCount,
+      totalExercises: exercises.length,
+      calories: plan.calories,
+      category: plan.category,
+      difficulty: plan.difficulty,
+      targetMuscles: plan.targetMuscles,
+      planId: plan.id,
+      source: plan.source || 'home',
+      setLog: setLogToSave,
+    });
+
+    setPhase('finished');
+    navigation.replace('WorkoutComplete', {
+      workoutId: plan.id,
+      duration: 0,
+      exercisesCompleted: completedCount,
+      totalExercises: exercises.length,
+      calories: plan.calories,
+      workoutTitle: plan.title,
+      category: plan.category,
+      difficulty: plan.difficulty,
+      targetMusclesJson: JSON.stringify(plan.targetMuscles),
+      planId: plan.id,
+      setLogJson: JSON.stringify(setLogToSave),
+    });
+  }, [exercises, currentExercise, currentExerciseIndex, plan, addCompletedWorkout, navigation]);
+
+  const advanceAfterSet = useCallback(() => {
+    setIsTimedRunning(false);
+    setTimeAccum(0);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    const allDone = setLogRef.current.every((s) => s.completed);
+    if (allDone) {
+      if (isLastExercise) {
+        finishWorkout();
+        return;
+      }
+      setPhase('transition');
+      return;
+    }
+    setPhase('rest');
+    setRestTimer(currentExercise?.restSeconds || 45);
+  }, [isLastExercise, currentExercise, finishWorkout]);
+
+  const handleLogSet = useCallback(() => {
     if (phase !== 'active' || !currentExercise) return;
-    setSetData((prev) => {
-      const next = [...prev];
-      next[setIndex] = { ...next[setIndex], completed: true };
-      return next;
-    });
-    setShowCompleteSheet(true);
-  }, [phase, currentExercise]);
+    markCurrentSetComplete();
+    advanceAfterSet();
+  }, [phase, currentExercise, markCurrentSetComplete, advanceAfterSet]);
 
-  const advanceAfterSetComplete = useCallback(() => {
-    setShowCompleteSheet(false);
-    setMotivationIndex((prev) => (prev + 1) % MOTIVATION_MESSAGES.length);
-    if (!currentExercise) return;
-    if (currentSet >= currentExercise.sets) {
-      setCompletedExerciseIds((prev) => new Set(prev).add(currentExercise.exerciseId));
-      setPhase('completed');
-      setCurrentSet((prev) => prev + 1);
-    } else {
-      setCurrentSet((prev) => prev + 1);
-    }
-  }, [currentExercise, currentSet]);
+  const handleStartTimed = useCallback(() => {
+    setIsTimedRunning(true);
+    setTimeAccum(0);
+  }, []);
 
-  const handleKgChange = useCallback((setIndex: number, value: number) => {
-    setSetData((prev) => {
+  const handleStopTimed = useCallback(() => {
+    setIsTimedRunning(false);
+    markCurrentSetComplete();
+    advanceAfterSet();
+  }, [markCurrentSetComplete, advanceAfterSet]);
+
+  const handleSkipSet = useCallback(() => {
+    setIsTimedRunning(false);
+    setTimeAccum(0);
+    markCurrentSetComplete();
+    advanceAfterSet();
+  }, [markCurrentSetComplete, advanceAfterSet]);
+
+  const handleUpdateReps = useCallback((setIdx: number, value: string) => {
+    const n = parseInt(value, 10);
+    setSetLog((prev) => {
       const next = [...prev];
-      next[setIndex] = { ...next[setIndex], kg: value };
+      next[setIdx] = { ...next[setIdx], reps: Number.isFinite(n) ? Math.max(0, n) : 0 };
       return next;
     });
   }, []);
 
-  const handleRepsChange = useCallback((setIndex: number, value: number) => {
-    setSetData((prev) => {
+  const handleUpdateKg = useCallback((setIdx: number, value: string) => {
+    const n = parseFloat(value);
+    setSetLog((prev) => {
       const next = [...prev];
-      next[setIndex] = { ...next[setIndex], reps: value };
+      next[setIdx] = {
+        ...next[setIdx],
+        kg: Number.isFinite(n) && n > 0 ? n : null,
+      };
       return next;
     });
   }, []);
+
+  const handleAddSet = useCallback(() => {
+    setSetLog((prev) => {
+      const last = prev[prev.length - 1];
+      return [
+        ...prev,
+        {
+          kg: last?.kg ?? null,
+          reps: last?.reps ?? defaultReps,
+          timeSec: isTimedExercise ? targetSeconds : undefined,
+          completed: false,
+        },
+      ];
+    });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  }, [defaultReps, isTimedExercise, targetSeconds]);
 
   const handleSkipRest = useCallback(() => {
     if (restIntervalRef.current) clearInterval(restIntervalRef.current);
     setRestTimer(0);
-    goToNextRef.current();
+    setPhase('active');
   }, []);
 
-  const handleSkipExercise = useCallback(() => {
+  const handleAdd15s = useCallback(() => {
+    setRestTimer((p) => p + 15);
+  }, []);
+
+  const handleStartNextSet = useCallback(() => {
     if (restIntervalRef.current) clearInterval(restIntervalRef.current);
     setRestTimer(0);
     setPhase('active');
-    setCompletedExerciseIds((prev) => {
-      const next = new Set(prev);
-      next.add(currentExercise.exerciseId);
-      return next;
-    });
-    goToNextRef.current();
-  }, [currentExercise?.exerciseId]);
+  }, []);
 
-  const handlePrevExercise = useCallback(() => {
-    if (currentExerciseIndex <= 0 || currentSet > 1) return;
-    setCurrentExerciseIndex((prev) => prev - 1);
-    setCurrentSet(1);
-    setExerciseTimer(0);
+  const handleStartNextExercise = useCallback(() => {
+    setCurrentExerciseIndex((p) => p + 1);
+    setShowFormGuide(false);
     setPhase('active');
-  }, [currentExerciseIndex, currentSet]);
-
-  const handlePause = useCallback(() => {
-    setIsPaused((prev) => !prev);
   }, []);
 
-  const handleQuit = useCallback(() => {
-    setShowQuitSheet(true);
-  }, []);
+  const handleSkipExercise = useCallback(() => {
+    if (!currentExercise) return;
+    if (isLastExercise) {
+      finishWorkout();
+      return;
+    }
+    setPhase('transition');
+  }, [currentExercise, isLastExercise, finishWorkout]);
 
-  const confirmQuit = useCallback(() => {
-    setShowQuitSheet(false);
+  const handlePause = useCallback(() => setShowPauseModal(true), []);
+  const handleResume = useCallback(() => {
+    setShowPauseModal(false);
+    setIsPaused(false);
+  }, []);
+  const handleEndRequest = useCallback(() => {
+    setShowPauseModal(false);
+    setShowEndSheet(true);
+  }, []);
+  const handleEndOpen = useCallback(() => setShowEndSheet(true), []);
+  const confirmEnd = useCallback(() => {
+    setShowEndSheet(false);
+    setShowPauseModal(false);
     if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    if (timedIntervalRef.current) clearInterval(timedIntervalRef.current);
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    if (totalIntervalRef.current) clearInterval(totalIntervalRef.current);
     navigation.goBack();
   }, [navigation]);
-
-  const handleEndWorkout = useCallback(() => {
-    setShowFinishSheet(true);
+  const handleSkipGetReady = useCallback(() => {
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    setCountdown(0);
+    setPhase('active');
   }, []);
 
-  if (!exercises.length) {
+  useEffect(() => {
+    return () => {
+      if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+      if (timedIntervalRef.current) clearInterval(timedIntervalRef.current);
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      if (totalIntervalRef.current) clearInterval(totalIntervalRef.current);
+    };
+  }, []);
+
+  if (!exercises.length || !currentExercise) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
@@ -352,324 +420,644 @@ export default function WorkoutTimerScreen() {
     );
   }
 
-  if (!currentExercise) return null;
-
-  const translateX = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [60, 0],
-  });
-
-  const renderImageCard = () => {
-    const cardWidth = SCREEN_WIDTH - 48;
-    const cardHeight = Math.min(260, cardWidth * 0.62);
-
+  // ──────────────────────────────────────────────
+  // GET READY
+  // ──────────────────────────────────────────────
+  if (phase === 'getReady') {
     return (
-      <Animated.View
-        style={[
-          styles.imageCardWhite,
-          {
-            width: cardWidth,
-            height: cardHeight,
-            transform: [{ translateX }],
-            opacity: slideAnim,
-          },
-        ]}
-      >
-        <ExerciseMediaCard
-          exercise={currentExercise}
-          mode="activeSession"
-          height={cardHeight}
-        />
-      </Animated.View>
-    );
-  };
-
-  const renderInfoCard = () => (
-    <Animated.View
-      style={[
-        styles.infoCard,
-        { borderColor: categoryColor + '30', transform: [{ translateX }], opacity: slideAnim },
-      ]}
-    >
-      <Text style={[styles.categoryTag, { color: categoryColor }]}>
-        {currentExercise.category.toUpperCase()}
-      </Text>
-      <Text style={styles.exerciseName}>{currentExercise.name}</Text>
-      <Text style={styles.setBadge}>Set {currentSet} of {currentExercise.sets}</Text>
-
-      <View style={styles.chipRow}>
-        {currentExercise.targetMuscles.slice(0, 4).map((m) => (
-          <View key={m} style={[styles.chip, { backgroundColor: categoryColor + '18' }]}>
-            <View style={[styles.chipDot, { backgroundColor: categoryColor }]} />
-            <Text style={[styles.chipText, { color: categoryColor }]}>{m}</Text>
-          </View>
-        ))}
-      </View>
-
-      <View style={styles.metaRow}>
-        <View style={styles.metaPill}>
-          <MaterialIcons name="fitness-center" size={12} color={colors.textSecondary} />
-          <Text style={styles.metaPillText}>{currentExercise.equipment}</Text>
-        </View>
-        <View style={styles.metaPill}>
-          <MaterialIcons name="signal-cellular-alt" size={12} color={colors.textSecondary} />
-          <Text style={styles.metaPillText}>{currentExercise.difficulty}</Text>
-        </View>
-        <View style={styles.metaPill}>
-          <MaterialIcons name="repeat" size={12} color={colors.textSecondary} />
-          <Text style={styles.metaPillText}>
-            {isTimed ? `${currentExercise.reps}s` : `${currentExercise.reps} reps`}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.divider} />
-
-      <View style={styles.setDots}>
-        {setData.map((sd, i) => (
-          <View
-            key={i}
-            style={[
-              styles.setDot,
-              sd.completed && styles.setDotCompleted,
-              i === currentSet - 1 && !sd.completed && styles.setDotActive,
-            ]}
-          />
-        ))}
-      </View>
-
-      {phase === 'rest' && (
-        <View style={styles.phaseSection}>
-          <Text style={styles.restLabel}>Rest</Text>
-          <Text style={styles.restTimerText}>{formatTime(restTimer)}</Text>
-          <TouchableOpacity onPress={handleSkipRest} style={styles.skipBtn}>
-            <Text style={styles.skipBtnText}>Skip Rest</Text>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={handleEndOpen} style={styles.iconBtn}>
+            <MaterialIcons name="close" size={24} color={colors.text} />
           </TouchableOpacity>
-          {nextExercise && (
-            <View style={styles.nextPreview}>
-              <Text style={styles.nextLabel}>Next:</Text>
-              <Text style={styles.nextName}>{nextExercise.name}</Text>
-              <Text style={styles.nextMeta}>{nextExercise.sets} sets · {nextExercise.reps} reps</Text>
-            </View>
-          )}
+          <Text style={styles.headerTitle} numberOfLines={1}>{plan.title}</Text>
+          <View style={{ width: 40 }} />
         </View>
-      )}
 
-      {phase === 'completed' && (
-        <View style={styles.phaseSection}>
-          <Animated.View style={{ transform: [{ scale: checkScale }] }}>
-            <View style={styles.checkCircle}>
-              <MaterialIcons name="check" size={36} color="#fff" />
-            </View>
+        <View style={styles.getReadyContent}>
+          <Text style={styles.getReadyLabel}>Get Ready</Text>
+          <Animated.View
+            style={[
+              styles.countdownCircle,
+              {
+                transform: [
+                  {
+                    scale: countdownAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.6, 1],
+                    }),
+                  },
+                ],
+                opacity: countdownAnim,
+              },
+            ]}
+          >
+            <Text style={styles.countdownNumber}>{countdown}</Text>
           </Animated.View>
-          <Text style={styles.completedText}>Exercise Complete!</Text>
-          <Text style={styles.completedSub}>Great work</Text>
+          <Text style={styles.getReadyNext}>
+            First: <Text style={styles.getReadyNextName}>{currentExercise.name}</Text>
+          </Text>
+          <Text style={styles.getReadyHint}>Prepare your position</Text>
         </View>
-      )}
-    </Animated.View>
-  );
 
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}>
+          <TouchableOpacity style={styles.primaryBtn} onPress={handleSkipGetReady} activeOpacity={0.85}>
+            <Text style={styles.primaryBtnText}>Start Now</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // ──────────────────────────────────────────────
+  // REST
+  // ──────────────────────────────────────────────
+  if (phase === 'rest') {
+    const completedHere = setLog.filter((s) => s.completed).length;
+    const totalHere = setLog.length;
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={handleEndOpen} style={styles.iconBtn}>
+            <MaterialIcons name="close" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Rest</Text>
+          <TouchableOpacity onPress={handlePause} style={styles.iconBtn}>
+            <MaterialIcons name="pause" size={24} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.restContent}>
+          <Text style={styles.restLabel}>REST TIME</Text>
+          <Text style={styles.restTimerText}>{formatTime(restTimer)}</Text>
+          <Text style={styles.restHint}>Relax. Next set is coming.</Text>
+
+          <View style={styles.restSummary}>
+            <View style={styles.restSummaryRow}>
+              <Text style={styles.restSummaryLabel}>Completed</Text>
+              <Text style={styles.restSummaryValue}>
+                Set {Math.max(1, completedHere)} of {totalHere}
+              </Text>
+            </View>
+            <View style={styles.restSummaryRow}>
+              <Text style={styles.restSummaryLabel}>Next</Text>
+              <Text style={styles.restSummaryValue}>
+                Set {Math.min(totalHere, completedHere + 1)} of {totalHere}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.setDotsLarge}>
+            {setLog.map((s, i) => (
+              <View
+                key={i}
+                style={[
+                  styles.setDotLarge,
+                  s.completed && styles.setDotLargeDone,
+                  !s.completed && i === currentSetNumber - 1 && styles.setDotLargeActive,
+                ]}
+              />
+            ))}
+          </View>
+        </View>
+
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}>
+          <View style={styles.restRow}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={handleAdd15s}>
+              <Text style={styles.secondaryBtnText}>+15s</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.primaryBtn, { flex: 1.5 }]}
+              onPress={handleStartNextSet}
+            >
+              <Text style={styles.primaryBtnText}>Start Next Set</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={handleSkipRest}>
+              <Text style={styles.secondaryBtnText}>Skip</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <AppModal
+          visible={showPauseModal}
+          onClose={handleResume}
+          title="Workout Paused"
+          message="Take a break. Resume when you're ready."
+          actions={[
+            { label: 'Resume', onPress: handleResume, variant: 'primary' },
+            { label: 'End Workout', onPress: handleEndRequest, variant: 'destructive' },
+          ]}
+        />
+        <BottomSheetModal
+          visible={showEndSheet}
+          onClose={() => setShowEndSheet(false)}
+          title="End Workout?"
+          subtitle="Your progress will be saved."
+          actions={[
+            { label: 'End Workout', onPress: confirmEnd, variant: 'destructive', icon: 'stop' },
+            { label: 'Cancel', onPress: () => setShowEndSheet(false), variant: 'secondary' },
+          ]}
+        />
+      </View>
+    );
+  }
+
+  // ──────────────────────────────────────────────
+  // TRANSITION
+  // ──────────────────────────────────────────────
+  if (phase === 'transition' && nextExercise) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <View style={{ width: 40 }} />
+          <Text style={styles.headerTitle}>Next Exercise</Text>
+          <TouchableOpacity onPress={handleEndOpen} style={styles.iconBtn}>
+            <MaterialIcons name="close" size={24} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={styles.transitionContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.checkCircle}>
+            <MaterialIcons name="check" size={40} color="#fff" />
+          </View>
+          <Text style={styles.transitionDone}>{currentExercise.name} Completed</Text>
+
+          <View style={styles.transitionNextCard}>
+            <Text style={styles.transitionNextLabel}>NEXT</Text>
+            <Text style={styles.transitionNextName}>{nextExercise.name}</Text>
+            <Text style={styles.transitionNextMeta}>
+              {nextExercise.sets} sets × {nextExercise.reps}{' '}
+              {nextExercise.type === 'time' ? 'sec' : 'reps'} · {nextExercise.restSeconds}s rest
+            </Text>
+          </View>
+        </ScrollView>
+
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}>
+          <TouchableOpacity style={styles.primaryBtn} onPress={handleStartNextExercise} activeOpacity={0.85}>
+            <MaterialIcons name="play-arrow" size={20} color="#fff" />
+            <Text style={styles.primaryBtnText}>Start {nextExercise.name}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <AppModal
+          visible={showPauseModal}
+          onClose={handleResume}
+          title="Workout Paused"
+          message="Take a break. Resume when you're ready."
+          actions={[
+            { label: 'Resume', onPress: handleResume, variant: 'primary' },
+            { label: 'End Workout', onPress: handleEndRequest, variant: 'destructive' },
+          ]}
+        />
+        <BottomSheetModal
+          visible={showEndSheet}
+          onClose={() => setShowEndSheet(false)}
+          title="End Workout?"
+          subtitle="Your progress will be saved."
+          actions={[
+            { label: 'End Workout', onPress: confirmEnd, variant: 'destructive', icon: 'stop' },
+            { label: 'Cancel', onPress: () => setShowEndSheet(false), variant: 'secondary' },
+          ]}
+        />
+      </View>
+    );
+  }
+
+  // ──────────────────────────────────────────────
+  // ACTIVE - render 3 branches
+  // ──────────────────────────────────────────────
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={handleQuit} style={styles.iconBtn}>
+        <TouchableOpacity onPress={handleEndOpen} style={styles.iconBtn}>
           <MaterialIcons name="close" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>{plan.title}</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerSubtitle}>
+            Exercise {currentExerciseIndex + 1} of {totalExercises}
+          </Text>
+        </View>
         <TouchableOpacity onPress={handlePause} style={styles.iconBtn}>
-          <MaterialIcons name={isPaused ? 'play-arrow' : 'pause'} size={24} color={colors.text} />
+          <MaterialIcons name="pause" size={24} color={colors.text} />
         </TouchableOpacity>
       </View>
 
       <View style={styles.progressSection}>
-        <Text style={styles.progressLabel}>
-          Exercise {currentExerciseIndex + 1} of {totalExercises}
-        </Text>
         <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+          <View style={[styles.progressFill, { width: `${overallProgress * 100}%` }]} />
         </View>
-        <Text style={styles.progressPct}>{Math.round(progress * 100)}%</Text>
+        <Text style={styles.progressPct}>{Math.round(overallProgress * 100)}%</Text>
       </View>
 
-      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
-        {renderImageCard()}
-        {renderInfoCard()}
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* IMAGE - no text overlay, 1:1 square */}
+        <View style={styles.gifWrap}>
+          <ExerciseMediaCard
+            exercise={currentExercise}
+            mode="activeSession"
+            aspectRatio={1}
+            contentFit="contain"
+            rounded={MEDIA_RADIUS}
+          />
+        </View>
 
-        {/* Set Tracking Table */}
-        {phase === 'active' && setData.length > 0 && (
-          <View style={styles.trackingSection}>
-            <Text style={styles.trackingTitle}>Set Tracking</Text>
-            {setData.map((sd, i) => (
-              <SetTrackerRow
-                key={i}
-                setNumber={i + 1}
-                kg={sd.kg}
-                reps={sd.reps}
-                completed={sd.completed}
-                isActive={i === currentSet - 1}
-                lastKg={i > 0 ? setData[i - 1].kg : undefined}
-                lastReps={i > 0 ? setData[i - 1].reps : undefined}
-                onKgChange={(v) => handleKgChange(i, v)}
-                onRepsChange={(v) => handleRepsChange(i, v)}
-                onComplete={() => handleCompleteSet(i)}
-              />
-            ))}
+        {/* Title BELOW the image */}
+        <View style={styles.exerciseInfo}>
+          <Text style={styles.exerciseName}>{currentExercise.name}</Text>
+          <View style={styles.exerciseMetaRow}>
+            <Text style={styles.exerciseMeta}>
+              {currentExercise.targetMuscles?.[0] || currentExercise.category}
+            </Text>
+            <View style={styles.dot} />
+            <Text style={styles.exerciseMeta}>{currentExercise.equipment}</Text>
+          </View>
+        </View>
+
+        {/* Helper line */}
+        <View style={styles.helperLine}>
+          <MaterialIcons name="tips-and-updates" size={16} color={colors.primary} />
+          <Text style={styles.helperText}>Read the form guide first, then start your set.</Text>
+        </View>
+
+        {/* Form Guide */}
+        <FormGuideCard
+          exercise={currentExercise}
+          expanded={showFormGuide}
+          onToggle={() => setShowFormGuide((p) => !p)}
+        />
+
+        {/* BRANCH A: weight_reps — table with Kg column */}
+        {currentExercise.type === 'weight_reps' && (
+          <SetLoggerCard
+            setLog={setLog}
+            currentSetNumber={currentSetNumber}
+            showKg
+            onUpdateReps={handleUpdateReps}
+            onUpdateKg={handleUpdateKg}
+            onAddSet={handleAddSet}
+          />
+        )}
+
+        {/* BRANCH B: bodyweight_reps — table without Kg column */}
+        {currentExercise.type === 'bodyweight_reps' && (
+          <SetLoggerCard
+            setLog={setLog}
+            currentSetNumber={currentSetNumber}
+            showKg={false}
+            onUpdateReps={handleUpdateReps}
+            onUpdateKg={handleUpdateKg}
+            onAddSet={handleAddSet}
+          />
+        )}
+
+        {/* BRANCH C: time — timer block */}
+        {currentExercise.type === 'time' && (
+          <View style={styles.timeBlock}>
+            <Text style={styles.setLine}>
+              Set <Text style={styles.setBold}>{currentSetNumber}</Text> of {setLog.length}
+            </Text>
+            <Text style={styles.targetLine}>Target: {targetSeconds} sec</Text>
+
+            {isTimedRunning ? (
+              <Text style={styles.timedDisplay}>{formatTime(timeAccum)}</Text>
+            ) : (
+              <Text style={styles.timedDisplay}>{formatTime(targetSeconds)}</Text>
+            )}
+
+            <View style={styles.setDots}>
+              {setLog.map((s, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.setDot,
+                    s.completed && styles.setDotDone,
+                    !s.completed && i === currentSetNumber - 1 && styles.setDotActive,
+                  ]}
+                />
+              ))}
+            </View>
           </View>
         )}
 
-        {/* Timer Display */}
-        {phase === 'active' && (
-          <View style={styles.timerStrip}>
-            <MaterialIcons name="timer" size={16} color={colors.textMuted} />
-            <Text style={styles.timerStripText}>{formatTime(exerciseTimer)}</Text>
-            <Text style={styles.timerStripLabel}>elapsed</Text>
-          </View>
-        )}
-
-        {phase === 'active' && currentExercise.instructions.length > 0 && (
-          <View style={styles.instructionsWrap}>
-            <InstructionSteps
-              instructions={currentExercise.instructions}
-              title="Form Guide"
-              collapsible
-              defaultExpanded={false}
-              maxVisible={2}
-            />
-          </View>
-        )}
-
-        {phase === 'active' && (
-          <View style={styles.motivationSection}>
-            <MaterialIcons name="mood" size={16} color={colors.success} />
-            <Text style={styles.motivationText}>{MOTIVATION_MESSAGES[motivationIndex]}</Text>
-          </View>
-        )}
-
+        {/* Small action row */}
         <View style={styles.quickControls}>
-          <TouchableOpacity
-            onPress={handlePrevExercise}
-            style={[styles.quickBtn, (currentExerciseIndex === 0 || currentSet > 1) && styles.quickBtnDisabled]}
-            disabled={currentExerciseIndex === 0 || currentSet > 1}
-          >
-            <MaterialIcons
-              name="skip-previous"
-              size={22}
-              color={currentExerciseIndex === 0 || currentSet > 1 ? colors.textMuted : colors.text}
-            />
-            <Text style={[styles.quickBtnText, (currentExerciseIndex === 0 || currentSet > 1) && { color: colors.textMuted }]}>Prev</Text>
+          <TouchableOpacity style={styles.quickBtn} onPress={handlePause}>
+            <MaterialIcons name="pause" size={18} color={colors.text} />
+            <Text style={styles.quickBtnText}>Pause</Text>
           </TouchableOpacity>
-
-          {phase === 'active' && (
-            <TouchableOpacity onPress={handleSkipExercise} style={styles.quickBtn}>
-              <MaterialIcons name="skip-next" size={22} color={colors.text} />
+          {isTimedExercise ? (
+            <TouchableOpacity style={styles.quickBtn} onPress={handleSkipSet}>
+              <MaterialIcons name="skip-next" size={18} color={colors.text} />
+              <Text style={styles.quickBtnText}>Skip Set</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.quickBtn} onPress={handleSkipExercise}>
+              <MaterialIcons name="skip-next" size={18} color={colors.text} />
               <Text style={styles.quickBtnText}>Skip</Text>
             </TouchableOpacity>
           )}
-
-          {phase === 'rest' && (
-            <TouchableOpacity onPress={handleSkipRest} style={styles.quickBtn}>
-              <MaterialIcons name="skip-next" size={22} color={colors.text} />
-              <Text style={styles.quickBtnText}>Skip Rest</Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity onPress={handleEndWorkout} style={styles.quickBtn}>
-            <MaterialIcons name="stop" size={22} color={colors.error} />
+          <TouchableOpacity style={styles.quickBtn} onPress={handleEndOpen}>
+            <MaterialIcons name="stop" size={18} color={colors.error} />
             <Text style={[styles.quickBtnText, { color: colors.error }]}>End</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
 
-      {/* Set Complete Bottom Sheet */}
-      <BottomSheetModal
-        visible={showCompleteSheet}
-        onClose={() => setShowCompleteSheet(false)}
-        title="Set Complete!"
-        subtitle="Great work on that set"
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}>
+        {isTimedExercise ? (
+          isTimedRunning ? (
+            <TouchableOpacity style={styles.primaryBtn} onPress={handleStopTimed} activeOpacity={0.85}>
+              <Text style={styles.primaryBtnText}>Stop</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.primaryBtn} onPress={handleStartTimed} activeOpacity={0.85}>
+              <MaterialIcons name="play-arrow" size={20} color="#fff" />
+              <Text style={styles.primaryBtnText}>Start Timer</Text>
+            </TouchableOpacity>
+          )
+        ) : (
+          <TouchableOpacity style={styles.primaryBtn} onPress={handleLogSet} activeOpacity={0.85}>
+            <Text style={styles.primaryBtnText}>Log Set</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <AppModal
+        visible={showPauseModal}
+        onClose={handleResume}
+        title="Workout Paused"
+        message="Take a break. Resume when you're ready."
         actions={[
-          {
-            label: 'Continue',
-            variant: 'primary',
-            icon: 'arrow-forward',
-            onPress: advanceAfterSetComplete,
-          },
+          { label: 'Resume', onPress: handleResume, variant: 'primary' },
+          { label: 'End Workout', onPress: handleEndRequest, variant: 'destructive' },
         ]}
       />
-
-      {/* Finish Workout Bottom Sheet */}
       <BottomSheetModal
-        visible={showFinishSheet}
-        onClose={() => setShowFinishSheet(false)}
-        title="Finish Workout?"
-        subtitle="This will complete your session"
-        actions={[
-          {
-            label: 'Complete Workout',
-            variant: 'primary',
-            icon: 'check-circle',
-            onPress: () => {
-              setShowFinishSheet(false);
-              finishWorkoutRef.current();
-            },
-          },
-          {
-            label: 'Cancel',
-            variant: 'secondary',
-            onPress: () => setShowFinishSheet(false),
-          },
-        ]}
-      />
-
-      {/* Quit Workout Bottom Sheet */}
-      <BottomSheetModal
-        visible={showQuitSheet}
-        onClose={() => setShowQuitSheet(false)}
+        visible={showEndSheet}
+        onClose={() => setShowEndSheet(false)}
         title="End Workout?"
-        subtitle="Your progress will be saved"
+        subtitle="Your progress will be saved."
         actions={[
-          {
-            label: 'End Workout',
-            variant: 'destructive',
-            icon: 'exit-to-app',
-            onPress: confirmQuit,
-          },
-          {
-            label: 'Cancel',
-            variant: 'secondary',
-            onPress: () => setShowQuitSheet(false),
-          },
+          { label: 'End Workout', onPress: confirmEnd, variant: 'destructive', icon: 'stop' },
+          { label: 'Cancel', onPress: () => setShowEndSheet(false), variant: 'secondary' },
         ]}
       />
+    </View>
+  );
+}
 
-      <AIFloatingButton
-        bottom={insets.bottom + spacing.lg}
-        onPress={() => setShowAIAssistant(true)}
-      />
-      <AIFitnessAssistant visible={showAIAssistant} onClose={() => setShowAIAssistant(false)} />
+// ──────────────────────────────────────────────────────
+// Set Logger Card (weight_reps and bodyweight_reps)
+// ──────────────────────────────────────────────────────
+function SetLoggerCard({
+  setLog,
+  currentSetNumber,
+  showKg,
+  onUpdateReps,
+  onUpdateKg,
+  onAddSet,
+}: {
+  setLog: CompletedSetEntry[];
+  currentSetNumber: number;
+  showKg: boolean;
+  onUpdateReps: (idx: number, value: string) => void;
+  onUpdateKg: (idx: number, value: string) => void;
+  onAddSet: () => void;
+}) {
+  return (
+    <View style={styles.loggerCard}>
+      <View style={styles.loggerHeader}>
+        <Text style={[styles.loggerHeaderText, { flex: 1 }]}>Set</Text>
+        <Text style={[styles.loggerHeaderText, { flex: 1 }]}>Reps</Text>
+        {showKg && <Text style={[styles.loggerHeaderText, { flex: 1 }]}>Kg</Text>}
+        <Text style={[styles.loggerHeaderText, { flex: 1, textAlign: 'right' }]}>Done</Text>
+      </View>
 
-      {isPaused && (
-        <View style={styles.pauseOverlay}>
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.bg }]} />
-          <View style={styles.pauseContent}>
-            <MaterialIcons name="pause-circle-outline" size={72} color={colors.primary} />
-            <Text style={styles.pauseTitle}>Workout Paused</Text>
-            <Text style={styles.pauseSubtitle}>{formatTime(totalDuration)} elapsed</Text>
-            <TouchableOpacity onPress={handlePause} activeOpacity={0.85} style={styles.resumeBtn}>
-              <MaterialIcons name="play-arrow" size={22} color="#fff" />
-              <Text style={styles.resumeBtnText}>Resume</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleQuit} style={styles.quitBtn}>
-              <Text style={styles.quitBtnText}>Quit Workout</Text>
-            </TouchableOpacity>
+      {setLog.map((s, i) => {
+        const isActive = i === currentSetNumber - 1;
+        const isDone = s.completed;
+        return (
+          <View
+            key={i}
+            style={[
+              styles.loggerRow,
+              isActive && !isDone && styles.loggerRowActive,
+              isDone && styles.loggerRowDone,
+            ]}
+          >
+            <View style={[styles.loggerCell, { flex: 1 }]}>
+              <View
+                style={[
+                  styles.setNum,
+                  isDone && styles.setNumDone,
+                  isActive && !isDone && styles.setNumActive,
+                ]}
+              >
+                {isDone ? (
+                  <MaterialIcons name="check" size={12} color="#fff" />
+                ) : (
+                  <Text
+                    style={[
+                      styles.setNumText,
+                      isActive && !isDone && { color: colors.primary },
+                    ]}
+                  >
+                    {i + 1}
+                  </Text>
+                )}
+              </View>
+            </View>
+            <View style={[styles.loggerCell, { flex: 1 }]}>
+              <TextInput
+                style={styles.repsInput}
+                value={String(s.reps || '')}
+                onChangeText={(v) => onUpdateReps(i, v)}
+                keyboardType="number-pad"
+                editable={!isDone}
+                selectTextOnFocus
+                maxLength={3}
+              />
+            </View>
+            {showKg && (
+              <View style={[styles.loggerCell, { flex: 1 }]}>
+                <TextInput
+                  style={styles.repsInput}
+                  value={s.kg != null ? String(s.kg) : ''}
+                  placeholder="–"
+                  placeholderTextColor={colors.textMuted}
+                  onChangeText={(v) => onUpdateKg(i, v)}
+                  keyboardType="decimal-pad"
+                  editable={!isDone}
+                  selectTextOnFocus
+                  maxLength={5}
+                />
+              </View>
+            )}
+            <View style={[styles.loggerCell, { flex: 1, alignItems: 'flex-end' }]}>
+              <View
+                style={[
+                  styles.doneDot,
+                  isDone && styles.doneDotFilled,
+                  isActive && !isDone && styles.doneDotActive,
+                ]}
+              />
+            </View>
           </View>
+        );
+      })}
+
+      <TouchableOpacity style={styles.addSetBtn} onPress={onAddSet} activeOpacity={0.85}>
+        <MaterialIcons name="add" size={16} color={colors.primary} />
+        <Text style={styles.addSetText}>Add Set</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function FormGuideCard({
+  exercise,
+  expanded,
+  onToggle,
+}: {
+  exercise: any;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const fg = exercise?.formGuide;
+  const sections = useMemo(() => {
+    if (!fg) return [];
+    const out: Array<{ key: string; title: string; icon: any; color: string; items: string[] }> = [];
+    if (fg.setup) {
+      out.push({
+        key: 'setup',
+        title: 'Setup',
+        icon: 'flag',
+        color: '#5AC8FA',
+        items: splitSentences(fg.setup, 3),
+      });
+    }
+    if (fg.movement) {
+      out.push({
+        key: 'how',
+        title: 'How to do',
+        icon: 'directions-run',
+        color: colors.primary,
+        items: splitSentences(fg.movement, 4),
+      });
+    }
+    if (fg.breathing) {
+      out.push({
+        key: 'breathing',
+        title: 'Breathing',
+        icon: 'air',
+        color: '#34C759',
+        items: splitSentences(fg.breathing, 2),
+      });
+    }
+    if (fg.mistakes) {
+      out.push({
+        key: 'mistakes',
+        title: 'Common mistake',
+        icon: 'error-outline',
+        color: colors.error,
+        items: splitSentences(fg.mistakes, 3),
+      });
+    }
+    if (fg.easyOption) {
+      out.push({
+        key: 'easier',
+        title: 'Easier option',
+        icon: 'accessibility-new',
+        color: colors.warning,
+        items: splitSentences(fg.easyOption, 2),
+      });
+    }
+    if (fg.safety) {
+      out.push({
+        key: 'safety',
+        title: 'Safety tip',
+        icon: 'health-and-safety',
+        color: colors.info,
+        items: splitSentences(fg.safety, 2),
+      });
+    }
+    return out;
+  }, [fg]);
+
+  if (!sections.length) return null;
+
+  return (
+    <View style={styles.formGuideCard}>
+      <TouchableOpacity style={styles.formGuideHeader} onPress={onToggle} activeOpacity={0.85}>
+        <MaterialIcons name="menu-book" size={20} color={colors.primary} />
+        <Text style={styles.formGuideTitle}>Form Guide</Text>
+        <Text style={styles.formGuideHint} numberOfLines={1}>
+          {expanded ? 'Tap to collapse' : 'Tap to expand'}
+        </Text>
+        <MaterialIcons
+          name={expanded ? 'expand-less' : 'expand-more'}
+          size={22}
+          color={colors.textMuted}
+          style={{ marginLeft: 'auto' }}
+        />
+      </TouchableOpacity>
+
+      {!expanded && (
+        <View style={styles.formGuideList}>
+          {sections.map((s) => (
+            <View key={s.key} style={styles.formGuideRow}>
+              <View style={[styles.formGuideIconBubble, { backgroundColor: s.color + '22' }]}>
+                <MaterialIcons name={s.icon} size={14} color={s.color} />
+              </View>
+              <Text style={styles.formGuideRowTitle} numberOfLines={1}>{s.title}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {expanded && (
+        <View style={styles.formGuideExpanded}>
+          {sections.map((s) => (
+            <View key={s.key} style={styles.formGuideSection}>
+              <View style={styles.formGuideSectionHeader}>
+                <View style={[styles.formGuideSectionAccent, { backgroundColor: s.color }]} />
+                <View style={[styles.formGuideIconBubble, { backgroundColor: s.color + '22' }]}>
+                  <MaterialIcons name={s.icon} size={16} color={s.color} />
+                </View>
+                <Text style={styles.formGuideSectionTitle}>{s.title}</Text>
+              </View>
+              {s.items.map((item, i) => (
+                <View key={i} style={styles.formGuideBulletRow}>
+                  <View style={[styles.formGuideBullet, { backgroundColor: s.color }]} />
+                  <Text style={styles.formGuideBulletText}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          ))}
         </View>
       )}
     </View>
   );
 }
 
+function splitSentences(text: string, maxItems: number): string[] {
+  if (!text) return [];
+  const parts = text
+    .split(/[.\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parts.slice(0, maxItems);
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#050505' },
+  container: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -677,174 +1065,484 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  headerTitle: { color: colors.text, fontSize: fontSize.lg, fontWeight: '700', flex: 1, textAlign: 'center', marginHorizontal: spacing.sm },
-  iconBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    alignItems: 'center', justifyContent: 'center',
+  headerCenter: { flex: 1, alignItems: 'center' },
+  headerTitle: {
+    color: colors.text,
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+    flex: 1,
+    textAlign: 'center',
   },
-
-  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl, gap: spacing.md },
+  headerSubtitle: { color: colors.textSecondary, fontSize: fontSize.sm, fontWeight: '600' },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
   emptyTitle: { color: colors.text, fontSize: fontSize.xl, fontWeight: '700' },
 
   progressSection: { paddingHorizontal: spacing.md, marginBottom: spacing.sm },
-  progressLabel: { color: colors.textSecondary, fontSize: fontSize.sm, fontWeight: '600', marginBottom: spacing.xs },
   progressTrack: {
-    height: 4, backgroundColor: colors.cardElevated, borderRadius: 2, overflow: 'hidden',
+    height: 4,
+    backgroundColor: colors.cardElevated,
+    borderRadius: 2,
+    overflow: 'hidden',
   },
   progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 2 },
-  progressPct: { color: colors.textMuted, fontSize: fontSize.xs, fontWeight: '500', textAlign: 'right', marginTop: 2 },
+  progressPct: {
+    color: colors.textMuted,
+    fontSize: fontSize.xs,
+    fontWeight: '600',
+    textAlign: 'right',
+    marginTop: 2,
+  },
 
   body: { flex: 1 },
-  bodyContent: { paddingBottom: spacing.xxl, paddingHorizontal: spacing.md },
+  bodyContent: { paddingHorizontal: MEDIA_SIDE, paddingBottom: spacing.lg },
 
-  imageCardWhite: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    marginTop: 24,
-    marginBottom: spacing.sm,
+  // IMAGE - 1:1 square, matches WorkoutDetailScreen.SquareMedia
+  gifWrap: {
+    width: MEDIA_WIDTH,
+    height: MEDIA_HEIGHT,
+    borderRadius: MEDIA_RADIUS,
     overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
     alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+    backgroundColor: '#FFFFFF',
   },
-  infoCard: {
-    backgroundColor: '#151515',
+
+  // Title block below image
+  exerciseInfo: { marginBottom: spacing.md, alignItems: 'center' },
+  exerciseName: {
+    color: colors.text,
+    fontSize: fontSize.title,
+    fontWeight: '900',
+    textAlign: 'center',
+    letterSpacing: -0.5,
+    lineHeight: 38,
+  },
+  exerciseMetaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 8 },
+  exerciseMeta: { color: colors.textSecondary, fontSize: fontSize.lg, fontWeight: '600', lineHeight: 24 },
+  dot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.textMuted },
+
+  // Set logger
+  loggerCard: {
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm + 2,
+    marginBottom: spacing.sm,
+  },
+  loggerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    marginBottom: spacing.sm,
+  },
+  loggerHeaderText: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    textAlign: 'center',
+  },
+  loggerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: borderRadius.sm,
+  },
+  loggerRowActive: { backgroundColor: colors.cardElevated },
+  loggerRowDone: { opacity: 0.6 },
+  loggerCell: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  setNum: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.cardElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  setNumActive: {
+    borderWidth: 2,
+    borderColor: colors.primary,
+    backgroundColor: 'transparent',
+  },
+  setNumDone: { backgroundColor: colors.success },
+  setNumText: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  repsInput: {
+    backgroundColor: colors.cardElevated,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    color: colors.text,
+    fontSize: fontSize.lg,
+    fontWeight: '800',
+    textAlign: 'center',
+    minHeight: 42,
+    width: '100%',
+  },
+  doneDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: colors.borderLight,
+  },
+  doneDotActive: { borderColor: colors.primary, backgroundColor: colors.primary + '20' },
+  doneDotFilled: { backgroundColor: colors.success, borderColor: colors.success },
+  addSetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  addSetText: { color: colors.primary, fontSize: fontSize.md, fontWeight: '800' },
+
+  // Time block
+  timeBlock: {
+    backgroundColor: colors.card,
     borderRadius: borderRadius.card,
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.lg,
+    alignItems: 'center',
     marginBottom: spacing.sm,
   },
-  instructionsWrap: {
+  setLine: { color: colors.text, fontSize: fontSize.lg, fontWeight: '700' },
+  setBold: { fontWeight: '800' },
+  targetLine: {
+    color: colors.text,
+    fontSize: fontSize.xl,
+    fontWeight: '800',
+    marginTop: 4,
     marginBottom: spacing.sm,
   },
-  categoryTag: { fontSize: fontSize.xs, fontWeight: '700', letterSpacing: 1.5, marginBottom: spacing.xs },
-  exerciseName: { color: '#fff', fontSize: fontSize.title, fontWeight: '800', marginBottom: spacing.xs },
-  setBadge: { color: colors.textSecondary, fontSize: fontSize.md, fontWeight: '600', marginBottom: spacing.md },
+  timedDisplay: {
+    color: colors.primary,
+    fontSize: 64,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+    marginVertical: spacing.sm,
+  },
+  setDots: { flexDirection: 'row', gap: spacing.xs, marginTop: spacing.sm },
+  setDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.cardElevated,
+  },
+  setDotDone: { backgroundColor: colors.success },
+  setDotActive: { borderWidth: 2, borderColor: colors.primary, backgroundColor: 'transparent' },
 
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: borderRadius.full },
-  chipDot: { width: 6, height: 6, borderRadius: 3 },
-  chipText: { fontSize: fontSize.xs, fontWeight: '600' },
+  // Helper line above the form guide
+  helperLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary + '12',
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  helperText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
 
-  metaRow: { flexDirection: 'row', gap: spacing.sm },
-  metaPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 4,
+  // Form guide card
+  formGuideCard: {
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  formGuideHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: spacing.sm,
+  },
+  formGuideTitle: {
+    color: colors.text,
+    fontSize: 25,
+    fontWeight: '800',
+  },
+  formGuideHint: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 4,
+    flexShrink: 1,
+  },
+  formGuideList: {
+    gap: 8,
+  },
+  formGuideRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+  },
+  formGuideIconBubble: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  formGuideRowTitle: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: '700',
+    flex: 1,
+  },
+  formGuideExpanded: {
+    gap: 18,
+  },
+  formGuideSection: {
+    gap: 8,
+  },
+  formGuideSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 4,
+  },
+  formGuideSectionAccent: {
+    width: 4,
+    height: 20,
+    borderRadius: 2,
+  },
+  formGuideSectionTitle: {
+    color: colors.text,
+    fontSize: 21,
+    fontWeight: '800',
+  },
+  formGuideBulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginLeft: 6,
+  },
+  formGuideBullet: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    marginTop: 9,
+  },
+  formGuideBulletText: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: 17,
+    lineHeight: 26,
+  },
+
+  // Quick controls
+  quickControls: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  quickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 8,
     borderRadius: borderRadius.full,
     backgroundColor: colors.cardElevated,
   },
-  metaPillText: { color: colors.textSecondary, fontSize: fontSize.xs, fontWeight: '500' },
+  quickBtnText: { color: colors.text, fontSize: fontSize.sm, fontWeight: '700' },
 
-  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md },
-
-  setDots: { flexDirection: 'row', justifyContent: 'center', gap: spacing.sm, marginBottom: spacing.xs },
-  setDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.cardElevated },
-  setDotCompleted: { backgroundColor: colors.success },
-  setDotActive: { borderWidth: 2, borderColor: colors.primary, backgroundColor: colors.primary + '30' },
-
-  phaseSection: { alignItems: 'center', gap: spacing.sm },
-  timerText: {
-    color: '#fff', fontSize: fontSize.giant, fontWeight: '800',
-    fontVariant: ['tabular-nums'], letterSpacing: 2,
+  // Bottom
+  bottomBar: {
+    paddingHorizontal: MEDIA_SIDE,
+    paddingTop: spacing.sm,
+    backgroundColor: colors.bg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
-  timerLabel: { color: colors.textMuted, fontSize: fontSize.xs, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
-
   primaryBtn: {
-    width: '100%', borderRadius: borderRadius.lg,
-    backgroundColor: colors.primary, paddingVertical: spacing.md,
-    alignItems: 'center', justifyContent: 'center', flexDirection: 'row',
-    gap: spacing.sm, marginTop: spacing.sm,
-  },
-  primaryBtnText: { color: '#fff', fontSize: fontSize.md, fontWeight: '700' },
-
-  restLabel: { color: colors.warning, fontSize: fontSize.sm, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5 },
-  restTimerText: {
-    color: colors.warning, fontSize: 52, fontWeight: '800',
-    fontVariant: ['tabular-nums'], letterSpacing: 2,
-  },
-  skipBtn: { paddingVertical: spacing.sm, paddingHorizontal: spacing.lg },
-  skipBtnText: { color: colors.textSecondary, fontSize: fontSize.md, fontWeight: '600' },
-
-  nextPreview: {
-    backgroundColor: colors.cardElevated, borderRadius: borderRadius.md,
-    padding: spacing.md, width: '100%', alignItems: 'center', marginTop: spacing.sm,
-  },
-  nextLabel: { color: colors.textMuted, fontSize: fontSize.xs, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
-  nextName: { color: '#fff', fontSize: fontSize.md, fontWeight: '700', marginTop: 2 },
-  nextMeta: { color: colors.textSecondary, fontSize: fontSize.sm, fontWeight: '500', marginTop: 2 },
-
-  checkCircle: {
-    width: 64, height: 64, borderRadius: 32,
-    backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center',
-    marginBottom: spacing.sm,
-  },
-  completedText: { color: colors.success, fontSize: fontSize.xl, fontWeight: '800' },
-  completedSub: { color: colors.textSecondary, fontSize: fontSize.md, fontWeight: '500' },
-
-  trackingSection: {
-    marginBottom: spacing.sm,
-  },
-  trackingTitle: {
-    color: colors.textSecondary,
-    fontSize: fontSize.sm,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: spacing.sm,
-  },
-  timerStrip: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.cardElevated,
-    borderRadius: borderRadius.full,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-    alignSelf: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.lg,
+    height: buttonHeight.lg,
+    gap: spacing.xs,
   },
-  timerStripText: {
-    color: colors.text,
-    fontSize: fontSize.lg,
+  primaryBtnText: { color: '#fff', fontSize: fontSize.xl, fontWeight: '800' },
+  secondaryBtn: {
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.cardElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 64,
+  },
+  secondaryBtnText: { color: colors.text, fontSize: fontSize.sm, fontWeight: '700' },
+  restRow: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center' },
+
+  // Get Ready
+  getReadyContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  getReadyLabel: {
+    color: colors.textMuted,
+    fontSize: fontSize.md,
     fontWeight: '700',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: spacing.xl,
+  },
+  countdownCircle: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xxl,
+  },
+  countdownNumber: {
+    color: '#fff',
+    fontSize: 96,
+    fontWeight: '900',
     fontVariant: ['tabular-nums'],
   },
-  timerStripLabel: {
+  getReadyNext: {
+    color: colors.textSecondary,
+    fontSize: fontSize.md,
+    marginBottom: spacing.xs,
+  },
+  getReadyNextName: { color: colors.text, fontWeight: '800' },
+  getReadyHint: { color: colors.textMuted, fontSize: fontSize.sm },
+
+  // Rest
+  restContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  restLabel: {
+    color: colors.textMuted,
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: spacing.md,
+  },
+  restTimerText: {
+    color: colors.text,
+    fontSize: 72,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 2,
+  },
+  restHint: {
+    color: colors.textSecondary,
+    fontSize: fontSize.md,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xl,
+  },
+  restSummary: {
+    width: '100%',
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  restSummaryRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  restSummaryLabel: { color: colors.textMuted, fontSize: fontSize.sm, fontWeight: '600' },
+  restSummaryValue: { color: colors.text, fontSize: fontSize.sm, fontWeight: '700' },
+  setDotsLarge: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xl },
+  setDotLarge: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.cardElevated,
+  },
+  setDotLargeDone: { backgroundColor: colors.success },
+  setDotLargeActive: { borderWidth: 2, borderColor: colors.primary, backgroundColor: 'transparent' },
+
+  // Transition
+  transitionContent: {
+    padding: spacing.lg,
+    alignItems: 'center',
+    paddingTop: spacing.xxl,
+  },
+  checkCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.success,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  transitionDone: {
+    color: colors.text,
+    fontSize: fontSize.xl,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+  },
+  transitionNextCard: {
+    width: '100%',
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    alignItems: 'center',
+  },
+  transitionNextLabel: {
     color: colors.textMuted,
     fontSize: fontSize.xs,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: spacing.xs,
+  },
+  transitionNextName: {
+    color: colors.text,
+    fontSize: fontSize.title,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: spacing.xs,
+  },
+  transitionNextMeta: {
+    color: colors.textSecondary,
+    fontSize: fontSize.sm,
     fontWeight: '500',
   },
-  motivationSection: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    justifyContent: 'center', paddingVertical: spacing.sm,
-  },
-  motivationText: { color: colors.success, fontSize: fontSize.sm, fontWeight: '700', lineHeight: 20 },
-
-  quickControls: {
-    flexDirection: 'row', justifyContent: 'center', gap: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  quickBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full, backgroundColor: colors.cardElevated,
-  },
-  quickBtnDisabled: { opacity: 0.4 },
-  quickBtnText: { color: colors.text, fontSize: fontSize.sm, fontWeight: '600' },
-
-  pauseOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', zIndex: 100 },
-  pauseContent: { alignItems: 'center', gap: spacing.md },
-  pauseTitle: { color: '#fff', fontSize: fontSize.title, fontWeight: '800' },
-  pauseSubtitle: { color: colors.textSecondary, fontSize: fontSize.lg, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  resumeBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingHorizontal: spacing.xxl, paddingVertical: spacing.md,
-    borderRadius: borderRadius.full, marginTop: spacing.md,
-    backgroundColor: colors.primary,
-  },
-  resumeBtnText: { color: '#fff', fontSize: fontSize.lg, fontWeight: '700' },
-  quitBtn: { paddingVertical: spacing.sm, paddingHorizontal: spacing.xl, borderRadius: borderRadius.full },
-  quitBtnText: { color: colors.textMuted, fontSize: fontSize.md, fontWeight: '500' },
 });

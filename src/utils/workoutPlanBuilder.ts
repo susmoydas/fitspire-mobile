@@ -1,5 +1,6 @@
 import type { Exercise } from '../types';
 import type { WorkoutPlan, WorkoutPlanExercise } from '../data/workoutPlans';
+import { deriveExerciseType } from '../data/workoutPlans';
 import { getExerciseImageUrl } from './image';
 
 const SETS_REPS_BY_DIFFICULTY: Record<string, { sets: number; reps: number; rest: number }> = {
@@ -21,6 +22,7 @@ function normalizeInstructions(instructions: string[]): string[] {
 export function exerciseToPlanExercise(ex: Exercise): WorkoutPlanExercise {
   const diff = ex.difficulty || 'Intermediate';
   const defaults = SETS_REPS_BY_DIFFICULTY[diff] || SETS_REPS_BY_DIFFICULTY.Intermediate;
+  const equipment = ex.equipment || 'Bodyweight';
 
   return {
     exerciseId: ex.id,
@@ -31,9 +33,10 @@ export function exerciseToPlanExercise(ex: Exercise): WorkoutPlanExercise {
     sets: ex.defaultSets || defaults.sets,
     reps: ex.defaultReps || defaults.reps,
     restSeconds: ex.restSeconds || defaults.rest,
-    equipment: ex.equipment || 'Bodyweight',
+    equipment,
     difficulty: diff,
     targetMuscles: ex.targetMuscles?.length ? ex.targetMuscles : [ex.category],
+    type: deriveExerciseType(equipment, ex.name),
     formGuide: ex.formGuide,
   };
 }

@@ -1,6 +1,7 @@
 node_modules/
 .expo/
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
@@ -12,5 +13,6 @@ android/.gradle/
 android/build/
 android/app/build/
 android/.idea/
+android/keystore.properties
 .DS_Store
 *.zip

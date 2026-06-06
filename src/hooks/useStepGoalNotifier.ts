@@ -1,51 +1,83 @@
 import { useEffect, useRef } from 'react';
 import { useStore } from '../store/useStore';
-import { useNotifications } from './useNotifications';
+import {
+  setStepNotificationActionHandler,
+  useNotifications,
+} from './useNotifications';
 
-const DAILY_TARGET_STEPS = 14000;
-const MILESTONES = [0.25, 0.50, 0.75, 1.0];
+const DEBOUNCE_MS = 30000;
 
-export function useStepGoalNotifier() {
+export function useStepLiveActivity(opts: { permissionGranted: boolean; isAvailable: boolean }) {
+  const { permissionGranted, isAvailable } = opts;
   const todaySteps = useStore((s) => s.todaySteps);
   const todayDate = useStore((s) => s.todayDate);
   const profile = useStore((s) => s.profile);
-  const { scheduleStepGoalNotification, showLiveActivity, cancelLiveActivity } =
-    useNotifications();
+  const stepTrackingEnabled = useStore((s) => s.stepTrackingEnabled);
+  const backgroundNotificationEnabled = useStore((s) => s.backgroundNotificationEnabled);
+  const setStepTrackingEnabled = useStore((s) => s.setStepTrackingEnabled);
+  const clearTodaySteps = useStore((s) => s.clearTodaySteps);
 
-  const notifiedMilestones = useRef<Set<string>>(new Set());
-  const prevDateRef = useRef(todayDate);
-  const lastLiveUpdate = useRef(0);
+  const { updateLiveSteps, clearLiveSteps } = useNotifications();
+
+  const lastTick = useRef(0);
+  const lastDate = useRef(todayDate);
 
   useEffect(() => {
-    if (todayDate !== prevDateRef.current) {
-      notifiedMilestones.current.clear();
-      prevDateRef.current = todayDate;
-      cancelLiveActivity();
+    setStepNotificationActionHandler((action) => {
+      if (action === 'pause') {
+        setStepTrackingEnabled(false);
+      } else if (action === 'stop') {
+        setStepTrackingEnabled(false);
+        clearTodaySteps();
+      } else if (action === 'open') {
+        // The OS brings the app to foreground. Nothing to do.
+      }
+    });
+    return () => setStepNotificationActionHandler(null);
+  }, [setStepTrackingEnabled, clearTodaySteps]);
+
+  useEffect(() => {
+    if (lastDate.current && lastDate.current !== todayDate) {
+      clearLiveSteps();
+      lastDate.current = todayDate;
     }
-  }, [todayDate, cancelLiveActivity]);
+  }, [todayDate, clearLiveSteps]);
 
   useEffect(() => {
+    const canShow =
+      stepTrackingEnabled &&
+      backgroundNotificationEnabled &&
+      permissionGranted &&
+      isAvailable;
+
+    if (!canShow) {
+      clearLiveSteps();
+      return;
+    }
+
     const weightKg = profile?.weight || 70;
     const calories = Math.round(3.5 * weightKg * (todaySteps / (10000 / 0.5)));
-    const progress = Math.min(todaySteps / DAILY_TARGET_STEPS, 1);
+    const distanceKm = parseFloat(((todaySteps * 0.7) / 1000).toFixed(2));
+    const goal = profile?.stepGoal || 10000;
 
     const now = Date.now();
-    if (todaySteps > 0 && now - lastLiveUpdate.current > 30000) {
-      lastLiveUpdate.current = now;
-      showLiveActivity(todaySteps, calories, progress);
-    }
-
-    for (const milestone of MILESTONES) {
-      const threshold = Math.round(DAILY_TARGET_STEPS * milestone);
-      if (todaySteps >= threshold) {
-        const key = `${prevDateRef.current}-${milestone}`;
-        if (!notifiedMilestones.current.has(key)) {
-          notifiedMilestones.current.add(key);
-          scheduleStepGoalNotification(milestone * 100);
-        }
-      }
-    }
-  }, [todaySteps, profile, scheduleStepGoalNotification, showLiveActivity]);
-
-  return null;
+    if (now - lastTick.current < DEBOUNCE_MS) return;
+    lastTick.current = now;
+    updateLiveSteps({
+      steps: todaySteps,
+      calories,
+      distanceKm,
+      paused: false,
+      goal,
+    });
+  }, [
+    todaySteps,
+    profile,
+    stepTrackingEnabled,
+    backgroundNotificationEnabled,
+    permissionGranted,
+    isAvailable,
+    updateLiveSteps,
+    clearLiveSteps,
+  ]);
 }

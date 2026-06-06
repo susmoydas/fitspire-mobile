@@ -242,8 +242,11 @@ export function useTrainingTracker(mode: TrainingMode) {
   }, [saveActiveSession]);
 
   const start = useCallback(async () => {
+    if (!useStore.getState().locationTrackingEnabled) {
+      return 'location_disabled' as const;
+    }
     const fgStatus = await Location.requestForegroundPermissionsAsync();
-    if (fgStatus.status !== 'granted') return;
+    if (fgStatus.status !== 'granted') return 'location_denied' as const;
 
     let bgGranted = false;
     try {

@@ -14,6 +14,8 @@ import ExerciseInstructionScreen from '../screens/ExerciseInstructionScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import StepDetailScreen from '../screens/StepDetailScreen';
 import MovementMapScreen from '../screens/MovementMapScreen';
+import HealthConnectOnboardingScreen from '../screens/HealthConnectOnboardingScreen';
+import StepTrackingOnboardingScreen from '../screens/StepTrackingOnboardingScreen';
 import { TrainingMode, Exercise, TrainingSession } from '../types';
 
 export type RootStackParamList = {
@@ -24,13 +26,15 @@ export type RootStackParamList = {
   WorkoutDetail: { workoutId: string; workoutTitle?: string };
   ExerciseInstruction: { exerciseId: string; exerciseData?: Exercise };
   WorkoutTimer: { planJson: string };
-  WorkoutComplete: { workoutId: string; duration: number; exercisesCompleted: number; totalExercises: number; calories: number; workoutTitle: string; category: string; difficulty: string; targetMusclesJson: string; planId?: string };
+  WorkoutComplete: { workoutId: string; duration: number; exercisesCompleted: number; totalExercises: number; calories: number; workoutTitle: string; category: string; difficulty: string; targetMusclesJson: string; planId?: string; setLogJson?: string };
   ActiveTraining: { mode: TrainingMode };
   TrainingDetail: { session: TrainingSession };
   ActivityHistory: undefined;
   EditProfile: undefined;
   StepDetail: undefined;
   MovementMap: { date?: string } | undefined;
+  HealthConnectOnboarding: undefined;
+  StepTrackingOnboarding: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -52,6 +56,16 @@ export default function RootNavigator() {
       <Stack.Screen name="StepDetail" component={StepDetailScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="MovementMap" component={MovementMapScreen} />
+      <Stack.Screen
+        name="HealthConnectOnboarding"
+        component={HealthConnectOnboardingScreen}
+        options={{ gestureEnabled: false }}
+      />
+      <Stack.Screen
+        name="StepTrackingOnboarding"
+        component={StepTrackingOnboardingScreen}
+        options={{ gestureEnabled: false }}
+      />
     </Stack.Navigator>
   );
 }

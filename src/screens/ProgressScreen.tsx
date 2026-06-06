@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { RootStackParamList } from '../navigation/RootNavigator';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, fontSize, spacing, borderRadius } from '../theme/colors';
+import ExerciseMediaCard from '../components/ExerciseMediaCard';
 import { useStore } from '../store/useStore';
 import { useWorkoutPlans } from '../hooks/useWorkoutPlans';
 import {
@@ -102,14 +103,18 @@ function NextWorkoutCard() {
   const nav = useNavigation<Nav>();
   const completedWorkoutLog = useStore((s) => s.completedWorkoutLog);
   const { plans } = useWorkoutPlans();
-  const [nextCardFailed, setNextCardFailed] = useState(false);
 
   const next = useMemo(() => {
     if (!plans || plans.length === 0) return null;
     return getNextWorkout(completedWorkoutLog, plans);
   }, [completedWorkoutLog, plans]);
 
-  if (!next || !next.plan) {
+  const fullPlan = useMemo(() => {
+    if (!next?.plan) return null;
+    return plans.find((p) => p.id === next.plan!.id) || null;
+  }, [next, plans]);
+
+  if (!next || !fullPlan) {
     return (
       <View style={styles.nextCard}>
         <Text style={styles.emptyCardText}>Start exploring workout plans</Text>
@@ -117,7 +122,8 @@ function NextWorkoutCard() {
     );
   }
 
-  const { plan, label } = next;
+  const { label } = next;
+  const plan = fullPlan;
 
   return (
     <TouchableOpacity
@@ -125,18 +131,20 @@ function NextWorkoutCard() {
       activeOpacity={0.9}
       onPress={() => nav.navigate('WorkoutDetail', { workoutId: plan.id, workoutTitle: plan.title })}
     >
-      <Image
-        source={nextCardFailed ? { uri: `https://placehold.co/400x300/1E293B/FF7A1A?text=${encodeURIComponent(plan.title)}` } : { uri: plan.imageUrl }}
-        style={styles.nextCardImage}
-        contentFit="cover"
-        onError={() => setNextCardFailed(true)}
-      />
-      <LinearGradient colors={['transparent', 'rgba(0,0,0,0.88)']} style={styles.nextCardGradient} />
+      <View style={styles.nextCardImageWrap}>
+        <ExerciseMediaCard
+          exercise={plan.exercises[0] as any}
+          aspectRatio={1}
+          rounded={20}
+          mode="detail"
+        />
+      </View>
       <View style={styles.nextCardContent}>
         <View style={styles.nextCardTag}>
           <Text style={styles.nextCardTagText}>Next • {label}</Text>
         </View>
-        <Text style={styles.nextCardTitle} numberOfLines={1}>{plan.title}</Text>
+        <Text style={styles.nextCardTitle} numberOfLines={2}>{plan.title}</Text>
+        <Text style={styles.nextCardDescription} numberOfLines={2}>{plan.description}</Text>
         <View style={styles.nextCardMeta}>
           <View style={styles.metaPill}>
             <MaterialIcons name="fitness-center" size={11} color={colors.textSecondary} />
@@ -665,26 +673,19 @@ const styles = StyleSheet.create({
 
   // Next Workout
   nextCard: {
-    height: 200,
+    backgroundColor: colors.card,
     borderRadius: borderRadius.bigCard,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
   },
-  nextCardImage: {
-    ...StyleSheet.absoluteFillObject,
+  nextCardImageWrap: {
     width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  nextCardGradient: {
-    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.sm,
   },
   nextCardContent: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     padding: spacing.md,
   },
   nextCardTag: {
@@ -706,12 +707,19 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xl,
     fontWeight: '800',
     color: colors.text,
-    marginBottom: spacing.xs,
+    marginBottom: 4,
     letterSpacing: -0.3,
+  },
+  nextCardDescription: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: spacing.sm,
   },
   nextCardMeta: {
     flexDirection: 'row',
     gap: spacing.sm,
+    flexWrap: 'wrap',
   },
   metaPill: {
     flexDirection: 'row',

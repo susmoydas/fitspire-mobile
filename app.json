@@ -39,12 +39,20 @@
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
-          "color": "#6C5CFF"
+          "color": "#FF7A1A"
         }
       ],
       "expo-font",
       "react-native-health",
-      "react-native-health-connect",
+      [
+        "react-native-health-connect",
+        {
+          "health_permissions": [
+            "Steps",
+            "Distance"
+          ]
+        }
+      ],
             "expo-asset",
             [
                 "expo-build-properties",
@@ -67,6 +75,9 @@
         "ACCESS_COARSE_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
+        "FOREGROUND_SERVICE_HEALTH",
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.POST_NOTIFICATIONS",
         "android.permission.health.READ_STEPS",
         "android.permission.health.READ_HEART_RATE",
         "android.permission.health.READ_SPEED_AND_DISTANCE",

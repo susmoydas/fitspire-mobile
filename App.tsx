@@ -6,12 +6,10 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import RootNavigator from './src/navigation/RootNavigator';
 import { ThemeProvider } from '@/theme/theme-provider';
 import { useStepCounter } from './src/hooks/useStepCounter';
-import { useStepGoalNotifier } from './src/hooks/useStepGoalNotifier';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 
 function AppContent() {
   useStepCounter();
-  useStepGoalNotifier();
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

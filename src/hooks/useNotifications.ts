@@ -5,7 +5,10 @@ import { colors } from '../theme/colors';
 const CHANNEL_ID = 'fitspire-steps';
 const CHANNEL_NAME = 'Step Tracking';
 const LIVE_NOTIFICATION_ID = 'fitspire-live-activity';
-const DAILY_TARGET_STEPS = 14000;
+const CATEGORY_ID = 'step_tracker';
+const ACTION_OPEN = 'OPEN_APP';
+const ACTION_PAUSE = 'PAUSE_TRACKING';
+const ACTION_STOP = 'STOP_TRACKING';
 
 let NotificationsModule: any = null;
 try {
@@ -16,8 +19,64 @@ function safeNotif(): any {
   return NotificationsModule;
 }
 
+export type StepNotificationActionHandler = (action: 'open' | 'pause' | 'stop') => void;
+
+let externalActionHandler: StepNotificationActionHandler | null = null;
+
+export function setStepNotificationActionHandler(handler: StepNotificationActionHandler | null) {
+  externalActionHandler = handler;
+}
+
+export interface LiveStepsPayload {
+  steps: number;
+  calories: number;
+  distanceKm: number;
+  paused: boolean;
+  goal: number;
+}
+
+function formatNumber(n: number): string {
+  return Math.round(n).toLocaleString();
+}
+
+function buildLiveContent(p: LiveStepsPayload) {
+  const content: any = {
+    title: p.paused ? 'Step Tracking Paused' : 'Step Tracker & Pedometer',
+    body: p.paused
+      ? 'Tap to resume'
+      : `👣 ${formatNumber(p.steps)} · 🔥 ${p.calories} kcal · 📍 ${p.distanceKm.toFixed(1)} km`,
+    data: {
+      type: 'live_activity',
+      paused: p.paused,
+      steps: p.steps,
+      calories: p.calories,
+      distanceKm: p.distanceKm,
+      goal: p.goal,
+    },
+    categoryIdentifier: CATEGORY_ID,
+    ...(Platform.OS === 'android' && {
+      channelId: CHANNEL_ID,
+      ongoing: !p.paused,
+      autoDismiss: false,
+      sticky: !p.paused,
+      color: colors.primary,
+    }),
+  };
+  if (Platform.OS === 'android' && !p.paused) {
+    content.android = {
+      priority: 'min',
+      progress: {
+        max: Math.max(p.goal, 1),
+        current: Math.min(p.steps, p.goal),
+        indeterminate: false,
+      },
+    };
+  }
+  return content;
+}
+
 export function useNotifications() {
-  const notifResponded = useRef(false);
+  const categoryRegistered = useRef(false);
 
   useEffect(() => {
     if (!safeNotif()) return;
@@ -25,7 +84,7 @@ export function useNotifications() {
       safeNotif().setNotificationHandler({
         handleNotification: async () => ({
           shouldShowAlert: true,
-          shouldShowBanner: true,
+          shouldShowBanner: false,
           shouldShowList: true,
           shouldPlaySound: false,
           shouldSetBadge: false,
@@ -34,7 +93,22 @@ export function useNotifications() {
     } catch {}
 
     setupChannel();
-    requestPermission();
+    registerCategory();
+
+    const sub = safeNotif().addNotificationResponseReceivedListener((response: any) => {
+      const actionId = response?.actionIdentifier;
+      const data = response?.notification?.request?.content?.data;
+      if (data?.type !== 'live_activity' && actionId === 'default') return;
+      if (actionId === ACTION_PAUSE) externalActionHandler?.('pause');
+      else if (actionId === ACTION_STOP) externalActionHandler?.('stop');
+      else externalActionHandler?.('open');
+    });
+
+    return () => {
+      try {
+        sub?.remove?.();
+      } catch {}
+    };
   }, []);
 
   const setupChannel = async () => {
@@ -42,10 +116,24 @@ export function useNotifications() {
     try {
       await safeNotif().setNotificationChannelAsync(CHANNEL_ID, {
         name: CHANNEL_NAME,
-        importance: 4,
+        importance: 1,
         vibrationPattern: [0, 0],
         sound: null,
+        showBadge: false,
       });
+    } catch {}
+  };
+
+  const registerCategory = async () => {
+    if (categoryRegistered.current) return;
+    if (!safeNotif()) return;
+    try {
+      await safeNotif().setNotificationCategoryAsync(CATEGORY_ID, [
+        { identifier: ACTION_OPEN, buttonTitle: 'Open', options: { opensAppToForeground: true } },
+        { identifier: ACTION_PAUSE, buttonTitle: 'Pause', options: { opensAppToForeground: false } },
+        { identifier: ACTION_STOP, buttonTitle: 'Stop', options: { opensAppToForeground: false, isDestructive: true } },
+      ]);
+      categoryRegistered.current = true;
     } catch {}
   };
 
@@ -63,20 +151,11 @@ export function useNotifications() {
     async (percentage: number) => {
       if (!safeNotif()) return;
       const pct = Math.min(percentage, 100);
-      const targetK = DAILY_TARGET_STEPS / 1000;
-      const achievedK = Math.round((DAILY_TARGET_STEPS * pct) / 100 / 1000);
-
       let body = '';
-      if (pct >= 100) {
-        body = `🎉 You've hit ${targetK}K steps! Amazing work today.`;
-      } else if (pct >= 75) {
-        body = `🔥 ${achievedK}K steps done — just ${targetK - achievedK}K to go!`;
-      } else if (pct >= 50) {
-        body = `👟 ${achievedK}K steps so far. Keep moving!`;
-      } else if (pct >= 25) {
-        body = `🚶 ${achievedK}K steps recorded. Great start!`;
-      }
-
+      if (pct >= 100) body = `🎉 You've hit your daily step goal! Amazing work today.`;
+      else if (pct >= 75) body = `🔥 ${pct}% of your goal reached — keep going!`;
+      else if (pct >= 50) body = `👟 ${pct}% of your goal so far. Keep moving!`;
+      else if (pct >= 25) body = `🚶 ${pct}% of your goal reached. Great start!`;
       if (!body) return;
 
       try {
@@ -92,67 +171,21 @@ export function useNotifications() {
         });
       } catch {}
     },
-    []
+    [],
   );
 
-  const showLiveActivity = useCallback(
-    async (steps: number, calories: number, progress: number) => {
-      if (!safeNotif()) return;
-      const progressPct = Math.round(progress * 100);
-      const targetK = DAILY_TARGET_STEPS / 1000;
-      const achievedK = (steps / 1000).toFixed(1);
-      const walkingMinutes = Math.round(steps / (100 / 60));
-      const durationStr = walkingMinutes >= 60
-        ? `${Math.floor(walkingMinutes / 60)}h ${walkingMinutes % 60}m`
-        : `${walkingMinutes}m`;
+  const updateLiveSteps = useCallback(async (payload: LiveStepsPayload) => {
+    if (!safeNotif()) return;
+    try {
+      await safeNotif().scheduleNotificationAsync({
+        identifier: LIVE_NOTIFICATION_ID,
+        content: buildLiveContent(payload),
+        trigger: null,
+      });
+    } catch {}
+  }, []);
 
-      try {
-        await safeNotif().dismissNotificationAsync(LIVE_NOTIFICATION_ID);
-      } catch {}
-
-      try {
-        const notifContent: any = {
-          title: `🚶 ${steps.toLocaleString()} steps`,
-          body: `🔥 ${calories} kcal • ${progressPct}% of ${targetK}K goal`,
-          data: {
-            type: 'live_activity',
-            steps,
-            calories,
-            progress,
-            duration: durationStr,
-            achievedK,
-            targetK,
-          },
-          ...(Platform.OS === 'android' && {
-            channelId: CHANNEL_ID,
-            ongoing: true,
-            autoDismiss: false,
-            color: colors.primary,
-          }),
-        };
-
-        if (Platform.OS === 'android') {
-          notifContent.android = {
-            priority: 'high',
-            progress: {
-              max: DAILY_TARGET_STEPS,
-              current: steps,
-              indeterminate: false,
-            },
-          };
-        }
-
-        await safeNotif().scheduleNotificationAsync({
-          identifier: LIVE_NOTIFICATION_ID,
-          content: notifContent,
-          trigger: null,
-        });
-      } catch {}
-    },
-    []
-  );
-
-  const cancelLiveActivity = useCallback(async () => {
+  const clearLiveSteps = useCallback(async () => {
     if (!safeNotif()) return;
     try {
       await safeNotif().dismissNotificationAsync(LIVE_NOTIFICATION_ID);
@@ -161,8 +194,8 @@ export function useNotifications() {
 
   return {
     scheduleStepGoalNotification,
-    showLiveActivity,
-    cancelLiveActivity,
+    updateLiveSteps,
+    clearLiveSteps,
     requestPermission,
   };
 }

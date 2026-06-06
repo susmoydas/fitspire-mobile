@@ -49,12 +49,22 @@ export type Equipment =
   | 'Kettlebell'
   | 'Band';
 
+export type ExerciseType = 'weight_reps' | 'bodyweight_reps' | 'time';
+
+export interface CompletedSetEntry {
+  kg: number | null;
+  reps: number;
+  timeSec?: number;
+  completed: boolean;
+}
+
 export interface FormGuide {
   setup: string;
   movement: string;
   breathing: string;
   mistakes: string;
   safety: string;
+  easyOption?: string;
 }
 
 export interface Exercise {
@@ -110,6 +120,7 @@ export interface CompletedWorkout {
   targetMuscles: string[];
   planId?: string;
   source?: string;
+  setLog?: { exerciseId: string; sets: CompletedSetEntry[] }[];
 }
 
 export interface DailyActivity {

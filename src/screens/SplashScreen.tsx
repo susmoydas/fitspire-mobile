@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet, Image, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { useStore } from '../store/useStore';
@@ -9,17 +9,31 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Splash'>;
 
 export default function SplashScreen({ navigation }: Props) {
   const onboardingCompleted = useStore((s) => s.profile?.onboardingCompleted);
+  const healthConnectOptIn = useStore((s) => s.healthConnectOptIn);
+  const stepTrackingDecision = useStore((s) => s.stepTrackingDecision);
 
   useEffect(() => {
     const t = setTimeout(() => {
-      if (onboardingCompleted) {
-        navigation.replace('Main');
-      } else {
+      if (!onboardingCompleted) {
         navigation.replace('Welcome');
+        return;
       }
+      if (stepTrackingDecision === 'pending') {
+        navigation.replace('StepTrackingOnboarding');
+        return;
+      }
+      if (
+        Platform.OS === 'android' &&
+        stepTrackingDecision === 'allowed' &&
+        healthConnectOptIn === 'pending'
+      ) {
+        navigation.replace('HealthConnectOnboarding');
+        return;
+      }
+      navigation.replace('Main');
     }, 900);
     return () => clearTimeout(t);
-  }, [onboardingCompleted]);
+  }, [onboardingCompleted, healthConnectOptIn, stepTrackingDecision]);
 
   return (
     <View style={styles.container}>

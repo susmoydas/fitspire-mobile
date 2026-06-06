@@ -10,6 +10,7 @@ import {
   BackHandler,
   Modal,
   Animated,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
@@ -68,7 +69,20 @@ export default function ActiveTrainingScreen() {
   const isRunning = status === 'active';
   const isPaused = status === 'paused';
 
-  const handleStart = useCallback(() => { start(); }, [start]);
+  const handleStart = useCallback(async () => {
+    const result = await start();
+    if (result === 'location_disabled') {
+      Alert.alert(
+        'Location Access is off',
+        'Enable Location Access in Profile to record your route.',
+      );
+    } else if (result === 'location_denied') {
+      Alert.alert(
+        'Location permission required',
+        'Allow location access to start tracking your route.',
+      );
+    }
+  }, [start]);
   const handlePause = useCallback(() => { pause(); }, [pause]);
   const handleResume = useCallback(() => { resume(); }, [resume]);
   const handleFinish = useCallback(() => {

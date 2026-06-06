@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,10 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
-  FlatList,
+  Platform,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -18,10 +19,13 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { useStore } from '../store/useStore';
 import { useStepCounter } from '../hooks/useStepCounter';
+import { useStepLiveActivity } from '../hooks/useStepGoalNotifier';
 import { useWorkoutPlans } from '../hooks/useWorkoutPlans';
 import { colors, fontSize, spacing, borderRadius, buttonHeight } from '../theme/colors';
 import SectionHeader from '../components/SectionHeader';
 import MetricCard from '../components/MetricCard';
+import StepSourceBanner from '../components/StepSourceBanner';
+import ExerciseMediaCard from '../components/ExerciseMediaCard';
 import type { CompletedWorkout, DailyActivity } from '../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -139,7 +143,8 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
 
-  const { steps: pedometerSteps, distanceKm, calories: stepCalories, isAvailable, permissionGranted } = useStepCounter();
+  const { steps: pedometerSteps, distanceKm, calories: stepCalories, isAvailable, permissionGranted, healthConnectActive, needsHealthConnectInstall } = useStepCounter();
+  useStepLiveActivity({ permissionGranted, isAvailable });
   const { plans, loading: plansLoading } = useWorkoutPlans();
 
   const todaySteps = useStore((s) => s.todaySteps);
@@ -147,9 +152,14 @@ export default function HomeScreen() {
   const completedWorkoutLog = useStore((s) => s.completedWorkoutLog);
   const workoutBuilder = useStore((s) => s.workoutBuilder);
   const activityLog = useStore((s) => s.activityLog);
+  const healthConnectOptIn = useStore((s) => s.healthConnectOptIn);
 
   const hasLiveSteps = isAvailable && permissionGranted;
   const displaySteps = hasLiveSteps ? pedometerSteps : todaySteps;
+  const showStepBanner =
+    Platform.OS === 'android' &&
+    healthConnectOptIn !== 'pending' &&
+    (!healthConnectActive || needsHealthConnectInstall);
   const progressPct = Math.min(displaySteps / stepGoal, 1);
   const progressOffset = CIRCUMFERENCE * (1 - progressPct);
 
@@ -186,6 +196,40 @@ export default function HomeScreen() {
   }, [plans, firstPlan, upcomingPlan]);
 
   const hasUnfinished = workoutBuilder.length > 0;
+
+  // ─── Step counter dismiss state ─────────────────────────────
+  const [stepDismissed, setStepDismissed] = useState(false);
+  const pan = useRef(new Animated.Value(0)).current;
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_e, g) => {
+        // Only claim the gesture when horizontal motion clearly dominates.
+        return Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5;
+      },
+      onPanResponderMove: (_e, g) => {
+        // Only allow leftward translation; clamp positive drag to 0.
+        if (g.dx < 0) pan.setValue(g.dx);
+      },
+      onPanResponderRelease: (_e, g) => {
+        if (g.dx < -80) {
+          Animated.timing(pan, {
+            toValue: -SCREEN_WIDTH,
+            duration: 220,
+            useNativeDriver: true,
+          }).start(() => {
+            pan.setValue(0);
+            setStepDismissed(true);
+          });
+        } else {
+          Animated.spring(pan, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 6,
+          }).start();
+        }
+      },
+    }),
+  ).current;
 
   const recentActivity = useMemo(() => {
     return [...completedWorkoutLog].slice(0, 5);
@@ -259,12 +303,28 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* ── 1. STEP COUNTER ─────────────────────────────── */}
-        <TouchableOpacity
-          style={styles.stepCard}
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('StepDetail')}
-        >
+        <StepSourceBanner visible={showStepBanner} />
+
+        {/* ── 1. STEP COUNTER (swipeable) ─────────────────── */}
+        {stepDismissed ? (
+          <TouchableOpacity
+            style={styles.stepRestorePill}
+            activeOpacity={0.85}
+            onPress={() => setStepDismissed(false)}
+          >
+            <MaterialIcons name="directions-walk" size={16} color={colors.primary} />
+            <Text style={styles.stepRestoreText}>Show step counter</Text>
+          </TouchableOpacity>
+        ) : (
+          <Animated.View
+            style={[styles.stepCardWrap, { transform: [{ translateX: pan }] }]}
+            {...panResponder.panHandlers}
+          >
+            <TouchableOpacity
+              style={styles.stepCard}
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('StepDetail')}
+            >
           <View style={styles.stepRingContainer}>
             <Svg width={RING_SIZE} height={RING_SIZE}>
               <Circle
@@ -311,7 +371,16 @@ export default function HomeScreen() {
               </View>
             </View>
           )}
+          <TouchableOpacity
+            style={styles.stepClose}
+            onPress={() => setStepDismissed(true)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <MaterialIcons name="close" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
         </TouchableOpacity>
+          </Animated.View>
+        )}
 
         {/* ── 2. STATS ROW ────────────────────────────────── */}
         <View style={styles.metricsRow}>
@@ -503,39 +572,36 @@ export default function HomeScreen() {
               action="See All"
               onAction={() => (navigation as any).navigate('Workouts')}
             />
-            <FlatList
-              horizontal
-              data={recommendedPlans}
-              keyExtractor={(item) => item.id}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.recommendedContent}
-              renderItem={({ item }) => (
+            <View style={styles.recommendedGrid}>
+              {recommendedPlans.slice(0, 4).map((item) => (
                 <TouchableOpacity
+                  key={item.id}
                   style={styles.recommendedCard}
                   activeOpacity={0.85}
                   onPress={() => navigation.navigate('WorkoutDetail', { workoutId: item.id, workoutTitle: item.title })}
                 >
-                  {item.imageUrl ? (
-                    <Image source={{ uri: item.imageUrl }} style={styles.recommendedImage} contentFit="cover" />
+                  {item.exercises?.[0] ? (
+                    <ExerciseMediaCard
+                      exercise={item.exercises[0] as any}
+                      aspectRatio={1}
+                      rounded={16}
+                      mode="detail"
+                    />
                   ) : (
-                    <View style={[styles.recommendedImage, styles.recommendedImageFallback]} />
-                  )}
-                  <LinearGradient
-                    colors={['transparent', '#050505']}
-                    style={styles.recommendedGradient}
-                  />
-                  <View style={styles.recommendedInfo}>
-                    <Text style={styles.recommendedName} numberOfLines={1}>{item.title}</Text>
-                    <View style={styles.recommendedMeta}>
-                      <MaterialIcons name="timer" size={13} color={colors.textSecondary} />
-                      <Text style={styles.recommendedMetaText}>{formatDuration(item.duration * 60)}</Text>
-                      <View style={styles.recommendedDot} />
-                      <Text style={styles.recommendedMetaText}>{item.difficulty}</Text>
+                    <View style={[styles.recommendedImageFallback, { aspectRatio: 1 }]}>
+                      <MaterialIcons name="fitness-center" size={28} color={colors.textMuted} />
                     </View>
+                  )}
+                  <View style={styles.recommendedInfo}>
+                    <View style={styles.recommendedLevelPill}>
+                      <Text style={styles.recommendedLevelPillText}>{item.difficulty}</Text>
+                    </View>
+                    <Text style={styles.recommendedName} numberOfLines={2}>{item.title}</Text>
+                    <Text style={styles.recommendedMetaText}>{item.duration} min · Level</Text>
                   </View>
                 </TouchableOpacity>
-              )}
-            />
+              ))}
+            </View>
           </View>
         )}
 
@@ -603,6 +669,9 @@ const styles = StyleSheet.create({
   },
 
   // ── Step Card ────────────────────────────────────────────
+  stepCardWrap: {
+    position: 'relative',
+  },
   stepCard: {
     backgroundColor: colors.card,
     borderRadius: borderRadius.card,
@@ -613,6 +682,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  stepClose: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.cardElevated,
+  },
+  stepRestorePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'center',
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  stepRestoreText: {
+    color: colors.primary,
+    fontSize: fontSize.sm,
+    fontWeight: '700',
   },
   stepRingContainer: {
     position: 'relative',
@@ -1023,61 +1122,55 @@ const styles = StyleSheet.create({
   },
 
   // ── Recommended ──────────────────────────────────────────
-  recommendedContent: {
-    paddingRight: spacing.lg,
+  recommendedGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 12,
   },
   recommendedCard: {
-    width: 210,
-    height: 150,
-    borderRadius: borderRadius.bigCard,
+    width: (CARD_WIDTH - 12) / 2,
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.card,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
   },
-  recommendedImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: undefined,
-    height: undefined,
-  },
   recommendedImageFallback: {
+    width: '100%',
     backgroundColor: colors.cardElevated,
-  },
-  recommendedGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   recommendedInfo: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: spacing.md,
+    padding: spacing.sm + 2,
     gap: 4,
+  },
+  recommendedLevelPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.cardElevated,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: borderRadius.full,
+    marginBottom: 2,
+  },
+  recommendedLevelPillText: {
+    color: colors.primary,
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   recommendedName: {
     color: colors.text,
     fontSize: fontSize.md,
-    fontWeight: '700',
-  },
-  recommendedMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    fontWeight: '800',
+    lineHeight: 20,
   },
   recommendedMetaText: {
     color: colors.textSecondary,
-    fontSize: fontSize.sm,
-    fontWeight: '500',
-  },
-  recommendedDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: colors.textMuted,
+    fontSize: fontSize.xs,
+    fontWeight: '600',
+    marginTop: 2,
   },
 
   // ── Recent Activity ──────────────────────────────────────

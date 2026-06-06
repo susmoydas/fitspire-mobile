@@ -4,6 +4,7 @@ import { Image, ImageContentFit } from 'expo-image';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, borderRadius, spacing, fontSize } from '../theme/colors';
 import { getWorkoutExerciseImageUrls, getExerciseImageUrls } from '../utils/image';
+import LogoFallback from './LogoFallback';
 import type { Exercise } from '../types';
 import type { WorkoutPlanExercise } from '../data/workoutPlans';
 
@@ -15,6 +16,7 @@ interface ExerciseMediaCardProps {
   rounded?: number;
   mode?: MediaMode;
   aspectRatio?: number;
+  contentFit?: ImageContentFit;
 }
 
 function getUrls(exercise: WorkoutPlanExercise | Exercise): string[] {
@@ -34,6 +36,7 @@ const ExerciseMediaCard = React.memo(function ExerciseMediaCard({
   rounded = borderRadius.lg,
   mode = 'detail',
   aspectRatio,
+  contentFit: contentFitProp,
 }: ExerciseMediaCardProps) {
   const urls = useMemo(() => getUrls(exercise), [exercise]);
   const uniqueUrls = useMemo(() => urls.filter(Boolean), [urls]);
@@ -56,14 +59,14 @@ const ExerciseMediaCard = React.memo(function ExerciseMediaCard({
     setAllFailed(false);
   }, [uniqueUrls.join('|')]);
 
-  const contentFit: ImageContentFit = 'contain';
-  const cardHeight = height || (mode === 'preStart' ? 260 : mode === 'activeSession' ? 280 : 220);
+  const contentFit: ImageContentFit = contentFitProp ?? 'cover';
+  const cardHeight = height || (mode === 'preStart' ? 240 : mode === 'activeSession' ? 260 : 200);
 
   return (
     <View
       style={[
         styles.card,
-        { borderRadius: rounded, height: cardHeight, backgroundColor: mode === 'activeSession' ? '#FFFFFF' : '#1C1C1E' },
+        { borderRadius: rounded, height: cardHeight, backgroundColor: '#FFFFFF' },
         aspectRatio ? { height: undefined, aspectRatio } : null,
       ]}
     >
@@ -79,16 +82,13 @@ const ExerciseMediaCard = React.memo(function ExerciseMediaCard({
           />
           {isGif && mode !== 'detail' && (
             <View style={styles.gifBadge}>
-              <MaterialIcons name="play-circle-outline" size={14} color="#fff" />
+              <MaterialIcons name="play-circle-outline" size={12} color="#fff" />
               <Text style={styles.gifBadgeText}>GIF</Text>
             </View>
           )}
         </>
       ) : (
-        <View style={styles.placeholder}>
-          <MaterialIcons name="fitness-center" size={40} color={colors.textMuted} />
-          <Text style={styles.placeholderText}>{getName(exercise)}</Text>
-        </View>
+        <LogoFallback caption={getName(exercise)} backgroundColor="#FFFFFF" />
       )}
     </View>
   );
@@ -99,11 +99,9 @@ export default ExerciseMediaCard;
 const styles = StyleSheet.create({
   card: {
     width: '100%',
-    backgroundColor: '#1C1C1E',
+    backgroundColor: '#FFFFFF',
     borderRadius: borderRadius.lg,
     overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   image: {
     width: '100%',
@@ -111,32 +109,19 @@ const styles = StyleSheet.create({
   },
   gifBadge: {
     position: 'absolute',
-    bottom: spacing.sm,
-    right: spacing.sm,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    bottom: spacing.xs,
+    right: spacing.xs,
+    backgroundColor: 'rgba(0,0,0,0.55)',
     borderRadius: borderRadius.full,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
   },
   gifBadgeText: {
     color: '#fff',
-    fontSize: fontSize.xs,
-    fontWeight: '600',
-  },
-  placeholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.cardElevated,
-    gap: spacing.xs,
-  },
-  placeholderText: {
-    color: colors.textMuted,
-    fontSize: fontSize.sm,
-    fontWeight: '500',
+    fontSize: 10,
+    fontWeight: '700',
   },
 });

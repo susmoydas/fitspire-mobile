@@ -1,6 +1,35 @@
 import { exercises } from './exercises';
-import { fetchAllExercisesDb } from '../services/exerciseDbApi';
-import type { Exercise } from '../types';
+import { fetchAllExercisesPaginated } from '../services/exerciseDbApi';
+import type { Exercise, ExerciseType } from '../types';
+import { getFormGuide } from './exerciseFormGuides';
+
+const WEIGHT_EQUIPMENT = new Set([
+  'Dumbbell',
+  'Barbell',
+  'Machine',
+  'Cable',
+  'Kettlebell',
+]);
+
+const TIME_KEYWORDS = [
+  'plank',
+  'hold',
+  'wall sit',
+  'bridge',
+  'dead hang',
+  'hollow',
+  'stretch',
+  'mountain climber',
+  'high knees',
+  'jumping jack',
+];
+
+export function deriveExerciseType(equipment: string, name: string): ExerciseType {
+  const lower = (name || '').toLowerCase();
+  if (TIME_KEYWORDS.some((k) => lower.includes(k))) return 'time';
+  if (WEIGHT_EQUIPMENT.has(equipment)) return 'weight_reps';
+  return 'bodyweight_reps';
+}
 
 export interface WorkoutPlanExercise {
   exerciseId: string;
@@ -14,12 +43,14 @@ export interface WorkoutPlanExercise {
   equipment: string;
   difficulty: string;
   targetMuscles: string[];
+  type: ExerciseType;
   formGuide?: {
     setup: string;
     movement: string;
     breathing: string;
     mistakes: string;
     safety: string;
+    easyOption?: string;
   };
 }
 
@@ -105,7 +136,8 @@ function toWorkoutPlanExercise(ex: Exercise, sets?: number, reps?: number): Work
     equipment: ex.equipment,
     difficulty: ex.difficulty,
     targetMuscles: ex.targetMuscles?.length ? ex.targetMuscles : [ex.category],
-    formGuide: ex.formGuide,
+    type: deriveExerciseType(ex.equipment, ex.name),
+    formGuide: ex.formGuide ?? getFormGuide({ name: ex.name, equipment: ex.equipment, instructions: ex.instructions }),
   };
 }
 
@@ -365,7 +397,7 @@ export function generateWorkoutPlans(exerciseList: Exercise[]): WorkoutPlan[] {
 export async function getWorkoutPlans(): Promise<WorkoutPlan[]> {
   if (cachedPlans) return cachedPlans;
   try {
-    const apiExercises = await fetchAllExercisesDb();
+    const apiExercises = await fetchAllExercisesPaginated();
     if (apiExercises.length > 5) {
       cachedPlans = generateWorkoutPlans(apiExercises);
       _usedApiSuccessfully = true;

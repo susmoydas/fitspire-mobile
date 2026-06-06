@@ -122,6 +122,7 @@ function mapWorkoutXExercise(raw: WorkoutXExercise): Exercise {
           breathing: 'Breathe steadily throughout the movement.',
           mistakes: 'Maintain proper form and control.',
           safety: 'Start with light weight and focus on form.',
+          easyOption: 'Reduce the weight or range of motion and focus on proper form.',
         }
       : undefined,
   };
@@ -170,6 +171,7 @@ function mapExercise(raw: RawExercise): Exercise {
           breathing: 'Breathe steadily throughout the movement.',
           mistakes: 'Maintain proper form and control.',
           safety: 'Start with light weight and focus on form.',
+          easyOption: 'Reduce the weight or range of motion and focus on proper form.',
         }
       : undefined,
   };

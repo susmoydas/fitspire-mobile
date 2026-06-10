@@ -220,11 +220,17 @@ function normalizeOssExercise(raw: OssExercise): Exercise {
   };
 }
 
-async function fetchOssApi<T>(endpoint: string): Promise<T> {
+async function fetchOssApi<T>(endpoint: string, timeoutMs = 10000): Promise<T> {
   const url = `${API_CONFIG.exercisedbOssBaseUrl}${endpoint}`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`OSS error: ${response.status}`);
-  return response.json();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`OSS error: ${response.status}`);
+    return response.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function fetchOssExercisesPage(offset = 0, limit = OSS_PAGE_LIMIT): Promise<OssExercise[]> {

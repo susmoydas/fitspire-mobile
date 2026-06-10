@@ -10,14 +10,8 @@ import {
   requestHealthConnectPermissions,
 } from '../services/healthConnectSteps';
 import { refreshPermissionStatuses } from '../services/permissions';
-
-function getStrideLength(heightCm: number): number {
-  return (heightCm * 0.415) / 100;
-}
-
-function getDateKey(d: Date): string {
-  return d.toISOString().split('T')[0];
-}
+import StepForegroundService from '../services/stepForegroundService';
+import { getDateKey, calculateDistanceKm, calculateCaloriesFromSteps } from '../utils/calculations';
 
 export function useStepCounter() {
   const [steps, setSteps] = useState(0);
@@ -25,6 +19,7 @@ export function useStepCounter() {
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [healthConnectActive, setHealthConnectActive] = useState(false);
   const [needsHealthConnectInstall, setNeedsHealthConnectInstall] = useState(false);
+  const [foregroundServiceRunning, setForegroundServiceRunning] = useState(false);
 
   const updateActivity = useStore((s) => s.updateActivity);
   const setTodaySteps = useStore((s) => s.setTodaySteps);
@@ -40,14 +35,12 @@ export function useStepCounter() {
   const saveInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const firstPedometerEvent = useRef(true);
   const lastHCSyncAt = useRef(0);
-
-  const todayRef = useRef('');
+  const foregroundSyncInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const heightCm = profile.height || 170;
   const weightKg = profile.weight || 70;
-  const strideLen = getStrideLength(heightCm);
-  const distanceKm = (steps * strideLen) / 1000;
-  const calories = Math.round(3.5 * weightKg * (steps / (10000 / 0.5)));
+  const distanceKm = calculateDistanceKm(steps, heightCm);
+  const calories = calculateCaloriesFromSteps(steps, weightKg);
 
   const writeStepsToStore = useCallback(
     (totalSteps: number, dateKey: string) => {
@@ -100,7 +93,6 @@ export function useStepCounter() {
         if (currentDate.current && currentDate.current !== todayKey) {
           await flushPreviousDayFromHC(currentDate.current);
           currentDate.current = todayKey;
-          todayRef.current = todayKey;
           healthConnectFloor.current = todayTotal;
           dailyStepsAccum.current = Math.max(dailyStepsAccum.current, todayTotal);
           setSteps(dailyStepsAccum.current);
@@ -115,7 +107,6 @@ export function useStepCounter() {
         }
         if (currentDate.current !== todayKey) {
           currentDate.current = todayKey;
-          todayRef.current = todayKey;
         }
         writeStepsToStore(dailyStepsAccum.current, todayKey);
       } catch {
@@ -159,8 +150,6 @@ export function useStepCounter() {
         }
         const todayKey = getDateKey(new Date());
         currentDate.current = todayKey;
-        todayRef.current = todayKey;
-
         if (Platform.OS === 'android') {
           let status;
           try {
@@ -195,6 +184,16 @@ export function useStepCounter() {
               }
               if (!mounted) return;
             }
+          }
+        }
+
+        // Start foreground service for background step tracking (Android only)
+        if (Platform.OS === 'android' && stepTrackingEnabled) {
+          try {
+            await StepForegroundService.start();
+            setForegroundServiceRunning(true);
+          } catch {
+            // Foreground service failed to start, continue with local pedometer
           }
         }
 
@@ -271,7 +270,6 @@ export function useStepCounter() {
         if (nowKey !== currentDate.current) {
           writeStepsToStore(dailyStepsAccum.current, currentDate.current);
           currentDate.current = nowKey;
-          todayRef.current = nowKey;
           healthConnectFloor.current = 0;
           dailyStepsAccum.current = 0;
           lastStepCount.current = 0;
@@ -285,10 +283,10 @@ export function useStepCounter() {
         if (firstPedometerEvent.current) {
           firstPedometerEvent.current = false;
           lastStepCount.current = result.steps;
-          if (healthConnectFloor.current > dailyStepsAccum.current) {
-            dailyStepsAccum.current = healthConnectFloor.current;
-            setSteps(dailyStepsAccum.current);
+          if (result.steps > dailyStepsAccum.current) {
+            dailyStepsAccum.current = result.steps;
           }
+          setSteps(dailyStepsAccum.current);
           return;
         }
 
@@ -319,7 +317,22 @@ export function useStepCounter() {
         if (currentDate.current) {
           writeStepsToStore(dailyStepsAccum.current, currentDate.current);
         }
-      }, 30000);
+      }, 15000);
+
+      // Sync with foreground service every 10 seconds (Android only)
+      if (Platform.OS === 'android' && foregroundServiceRunning) {
+        foregroundSyncInterval.current = setInterval(async () => {
+          if (!mounted) return;
+          const fgSteps = await StepForegroundService.getStepCount();
+          if (fgSteps > dailyStepsAccum.current) {
+            dailyStepsAccum.current = fgSteps;
+            setSteps(fgSteps);
+            if (currentDate.current) {
+              writeStepsToStore(fgSteps, currentDate.current);
+            }
+          }
+        }, 10000);
+      }
       } catch {
         // Never let a tracking/permission error crash the app.
         if (!mounted) return;
@@ -345,12 +358,20 @@ export function useStepCounter() {
       if (saveInterval.current) {
         clearInterval(saveInterval.current);
       }
+      if (foregroundSyncInterval.current) {
+        clearInterval(foregroundSyncInterval.current);
+      }
+      if (Platform.OS === 'android' && foregroundServiceRunning) {
+        StepForegroundService.stop();
+        setForegroundServiceRunning(false);
+      }
       if (currentDate.current && dailyStepsAccum.current >= 0) {
         writeStepsToStore(dailyStepsAccum.current, currentDate.current);
       }
       appStateSub.remove();
     };
   }, [
+    stepTrackingEnabled,
     syncFromHealthConnect,
     flushPreviousDayFromHC,
     setHealthConnectOptIn,
@@ -366,5 +387,6 @@ export function useStepCounter() {
     permissionGranted,
     healthConnectActive,
     needsHealthConnectInstall,
+    foregroundServiceRunning,
   };
 }

@@ -1,12 +1,12 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   Dimensions,
 } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -16,6 +16,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { colors, fontSize, spacing, borderRadius } from '../theme/colors';
 import TrainingMap from '../components/TrainingMap';
 import type { TrainingSession } from '../types';
+import { calculateCaloriesFromSteps, calculateDistanceKm } from '../utils/calculations';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -27,6 +28,8 @@ function formatDuration(minutes: number): string {
   const m = minutes % 60;
   return `${h}h ${m}m`;
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function getDateStr(offset: number): string {
   const d = new Date();
@@ -44,12 +47,14 @@ function getWeekDates(): string[] {
   return dates;
 }
 
-function getMonthDates(): string[] {
+function getMonthDates(monthDate: Date): string[] {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
   const dates: string[] = [];
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    dates.push(d.toISOString().split('T')[0]);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    dates.push(date.toISOString().split('T')[0]);
   }
   return dates;
 }
@@ -79,18 +84,20 @@ export default function ActivityHistoryScreen() {
 
   const heightCm = profile?.height || 170;
   const weightKg = profile?.weight || 70;
-  const strideLen = (heightCm * 0.415) / 100;
+
+  const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const today = getDateStr(0);
   const yesterday = getDateStr(-1);
   const weekDates = useMemo(() => getWeekDates(), []);
-  const monthDates = useMemo(() => getMonthDates(), []);
+  const monthDates = useMemo(() => getMonthDates(currentMonth), [currentMonth]);
+  const monthLabel = `${MONTHS[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
 
   const todayData = useMemo(() => {
     const fromLog = activityLog.find((a) => a.date === today);
     const steps = todayDate === today ? todaySteps : (fromLog?.steps || 0);
-    const calories = fromLog?.caloriesBurned || Math.round(3.5 * weightKg * (steps / (10000 / 0.5)));
-    const distance = (steps * strideLen) / 1000;
+    const calories = fromLog?.caloriesBurned || calculateCaloriesFromSteps(steps, weightKg);
+    const distance = calculateDistanceKm(steps, heightCm);
     const duration = Math.round(steps / (100 / 60));
     const fromTraining = trainingSessions.filter(s => s.date === today);
     return {
@@ -102,13 +109,13 @@ export default function ActivityHistoryScreen() {
       pct: Math.min(steps / DAILY_TARGET_STEPS, 1),
       training: fromTraining,
     };
-  }, [activityLog, today, todaySteps, todayDate, weightKg, strideLen, trainingSessions]);
+  }, [activityLog, today, todaySteps, todayDate, weightKg, heightCm, trainingSessions]);
 
   const yesterdayData = useMemo(() => {
     const fromLog = activityLog.find((a) => a.date === yesterday);
     const steps = fromLog?.steps || 0;
-    const calories = fromLog?.caloriesBurned || Math.round(3.5 * weightKg * (steps / (10000 / 0.5)));
-    const distance = (steps * strideLen) / 1000;
+    const calories = fromLog?.caloriesBurned || calculateCaloriesFromSteps(steps, weightKg);
+    const distance = calculateDistanceKm(steps, heightCm);
     const fromTraining = trainingSessions.filter(s => s.date === yesterday);
     const durationMin = Math.round(steps / (100 / 60)) + fromTraining.reduce((sum, s) => sum + Math.round(s.duration / 60), 0);
     return {
@@ -120,7 +127,7 @@ export default function ActivityHistoryScreen() {
       pct: Math.min(steps / DAILY_TARGET_STEPS, 1),
       training: fromTraining,
     };
-  }, [activityLog, yesterday, weightKg, strideLen, trainingSessions]);
+  }, [activityLog, yesterday, weightKg, heightCm, trainingSessions]);
 
   const weekData = useMemo(() => {
     const days = weekDates.map((date, i) => {
@@ -129,14 +136,14 @@ export default function ActivityHistoryScreen() {
       const steps = date === today && todayDate === today
         ? Math.max(dayActivity?.steps || 0, todaySteps)
         : (dayActivity?.steps || 0);
-      const cal = (dayActivity?.caloriesBurned || Math.round(3.5 * weightKg * (steps / (10000 / 0.5)))) + dayTraining.reduce((sum, s) => sum + s.calories, 0);
-      const dist = (steps * strideLen) / 1000 + dayTraining.reduce((sum, s) => sum + s.distance, 0);
+      const cal = (dayActivity?.caloriesBurned || calculateCaloriesFromSteps(steps, weightKg)) + dayTraining.reduce((sum, s) => sum + s.calories, 0);
+      const dist = calculateDistanceKm(steps, heightCm) + dayTraining.reduce((sum, s) => sum + s.distance, 0);
       const durationMin = Math.round(steps / (100 / 60));
       return { label: WEEK_LABELS[i], date, steps, cal, dist, pct: Math.min(steps / DAILY_TARGET_STEPS, 1), durationMin };
     });
     const total = { steps: days.reduce((s, d) => s + d.steps, 0), cal: days.reduce((s, d) => s + d.cal, 0), dist: days.reduce((s, d) => s + d.dist, 0), durationMin: days.reduce((s, d) => s + d.durationMin, 0) };
     return { days, ...total, avgSteps: Math.round(total.steps / 7) };
-  }, [weekDates, activityLog, trainingSessions, today, todayDate, todaySteps, weightKg, strideLen]);
+  }, [weekDates, activityLog, trainingSessions, today, todayDate, todaySteps, weightKg, heightCm]);
 
   const monthData = useMemo(() => {
     const days = monthDates.map((date) => {
@@ -148,15 +155,15 @@ export default function ActivityHistoryScreen() {
       return {
         date,
         steps,
-        cal: (dayActivity?.caloriesBurned || Math.round(3.5 * weightKg * (steps / (10000 / 0.5)))) + dayTraining.reduce((sum, s) => sum + s.calories, 0),
-        dist: (steps * strideLen) / 1000 + dayTraining.reduce((sum, s) => sum + s.distance, 0),
+        cal: (dayActivity?.caloriesBurned || calculateCaloriesFromSteps(steps, weightKg)) + dayTraining.reduce((sum, s) => sum + s.calories, 0),
+        dist: calculateDistanceKm(steps, heightCm) + dayTraining.reduce((sum, s) => sum + s.distance, 0),
         pct: Math.min(steps / DAILY_TARGET_STEPS, 1),
       };
     });
     const totalSteps = days.reduce((s, d) => s + d.steps, 0);
     const activeDays = days.filter(d => d.steps > 0).length;
     return { days, totalSteps, activeDays, avgSteps: activeDays > 0 ? Math.round(totalSteps / activeDays) : 0 };
-  }, [monthDates, activityLog, trainingSessions, today, todayDate, todaySteps, weightKg, strideLen]);
+  }, [monthDates, activityLog, trainingSessions, today, todayDate, todaySteps, weightKg, heightCm]);
 
   const statsBar = (steps: number, calories: number, distance: number, duration: string) => (
     <View style={styles.statsBar}>
@@ -278,7 +285,7 @@ export default function ActivityHistoryScreen() {
 
   const renderMonthlyContent = () => {
     const maxSteps = Math.max(...monthData.days.map(d => d.steps), 1);
-    const activeDays = monthData.days.filter(d => d.steps > 0);
+    const totalActiveDays = monthData.days.filter(d => d.steps > 0).length;
     return (
       <>
         <View style={styles.summaryCard}>
@@ -304,19 +311,26 @@ export default function ActivityHistoryScreen() {
             </View>
           </View>
         </View>
+        <View style={styles.navRow}>
+          <TouchableOpacity onPress={() => { const d = new Date(currentMonth); d.setMonth(d.getMonth() - 1); setCurrentMonth(d); }} style={styles.navBtn}>
+            <MaterialIcons name="chevron-left" size={22} color={colors.text} />
+          </TouchableOpacity>
+          <View style={styles.navCenter}>
+            <Text style={styles.navMonth}>{monthLabel}</Text>
+            <Text style={styles.navSub}>{totalActiveDays} active day{totalActiveDays !== 1 ? 's' : ''} this month</Text>
+          </View>
+          <TouchableOpacity onPress={() => { const d = new Date(currentMonth); d.setMonth(d.getMonth() + 1); setCurrentMonth(d); }} style={styles.navBtn}>
+            <MaterialIcons name="chevron-right" size={22} color={colors.text} />
+          </TouchableOpacity>
+        </View>
         <View style={styles.barsCard}>
           <Text style={styles.cardTitle}>Monthly Calendar</Text>
-          <Text style={styles.cardSubtitle}>{activeDays.length} active days this month</Text>
           <View style={styles.calGrid}>
             {monthData.days.map((day, i) => {
               const d = new Date(day.date);
               return (
                 <View key={day.date} style={styles.calDay}>
-                  {i === 0 || d.getDate() === 1 ? (
-                    <Text style={styles.calDayNum}>{d.getDate()}</Text>
-                  ) : (
-                    <Text style={styles.calDayNum}>{d.getDate()}</Text>
-                  )}
+                  <Text style={styles.calDayNum}>{d.getDate()}</Text>
                   <View style={[styles.calDot, { backgroundColor: day.steps > 0 ? colors.success : colors.cardElevated }]} />
                 </View>
               );
@@ -327,7 +341,6 @@ export default function ActivityHistoryScreen() {
           <Text style={styles.cardTitle}>Activity Trend</Text>
           <View style={styles.trendRow}>
             {monthData.days.filter((_, i) => i % 3 === 0).map((day, i) => {
-              const actualIdx = i * 3;
               return (
                 <View key={day.date} style={styles.trendCol}>
                   <View style={styles.trendBarWrapper}>
@@ -375,7 +388,7 @@ export default function ActivityHistoryScreen() {
       {activeTab === 'today' && statsBar(todayData.steps, todayData.calories, todayData.distance, todayData.duration)}
       {activeTab === 'yesterday' && statsBar(yesterdayData.steps, yesterdayData.calories, yesterdayData.distance, yesterdayData.duration)}
       {activeTab === 'weekly' && statsBar(weekData.steps, weekData.cal, weekData.dist, formatDuration(Math.round(weekData.steps / (100 / 60) / 7)))}
-      {activeTab === 'monthly' && statsBar(monthData.totalSteps, monthData.totalSteps > 0 ? monthData.activeDays * Math.round(monthData.totalSteps / monthData.activeDays * 0.04) : 0, 0, formatDuration(Math.round(monthData.totalSteps / (100 / 60) / 30)))}
+      {activeTab === 'monthly' && statsBar(monthData.totalSteps, monthData.totalSteps > 0 ? monthData.activeDays * calculateCaloriesFromSteps(Math.round(monthData.totalSteps / monthData.activeDays), weightKg) : 0, 0, formatDuration(Math.round(monthData.totalSteps / (100 / 60) / 30)))}
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -534,8 +547,25 @@ const styles = StyleSheet.create({
   summaryLabel: { color: colors.textSecondary, fontSize: 10, fontWeight: '500', marginTop: 2 },
   summaryDividerH: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md },
 
-  cardTitle: { color: colors.text, fontSize: fontSize.md, fontWeight: '700' },
-  cardSubtitle: { color: colors.textSecondary, fontSize: fontSize.xs, marginTop: -spacing.sm, marginBottom: spacing.md },
+  cardTitle: { color: colors.text, fontSize: fontSize.md, fontWeight: '700', marginBottom: spacing.sm },
+  cardSubtitle: { color: colors.textSecondary, fontSize: fontSize.xs, marginBottom: spacing.md },
+
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  navBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navCenter: { alignItems: 'center', gap: 2 },
+  navMonth: { color: colors.text, fontSize: fontSize.lg, fontWeight: '700' },
+  navSub: { color: colors.textSecondary, fontSize: fontSize.xs },
 
   calGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-start' },
   calDay: { width: '12%', alignItems: 'center', paddingVertical: 4, gap: 2 },

@@ -1,7 +1,6 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
-  Text,
   Image,
   StyleSheet,
   ScrollView,
@@ -12,6 +11,7 @@ import {
   Platform,
   UIManager,
 } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -34,6 +34,7 @@ const MEDIA_WIDTH = SCREEN_WIDTH - MEDIA_SIDE * 2;
 const MEDIA_HEIGHT = MEDIA_WIDTH;
 const THUMB_SIZE = 56;
 const MEDIA_RADIUS = 24;
+const EXPANDED_MEDIA_WIDTH = SCREEN_WIDTH - spacing.lg * 2 - spacing.md * 2 - spacing.sm * 2;
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -347,9 +348,6 @@ export default function WorkoutDetailScreen() {
                   activeOpacity={0.85}
                   onPress={() => toggleExpand(idx)}
                 >
-                  <View style={styles.exNum}>
-                    <Text style={styles.exNumText}>{idx + 1}</Text>
-                  </View>
                   <View style={styles.exThumb}>
                     <ExerciseMediaCard
                       exercise={ex}
@@ -378,7 +376,7 @@ export default function WorkoutDetailScreen() {
                     <View style={styles.expandedGif}>
                       <SquareMedia
                         exercise={ex}
-                        size={MEDIA_WIDTH}
+                        size={EXPANDED_MEDIA_WIDTH}
                         rounded={MEDIA_RADIUS}
                       />
                     </View>
@@ -684,7 +682,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs },
 
   heroWrap: {
-    width: MEDIA_WIDTH,
+    width: SCREEN_WIDTH - spacing.lg * 2,
     alignSelf: 'center',
     marginBottom: spacing.md,
   },
@@ -975,15 +973,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     padding: spacing.sm,
-  },
-  exNum: {
-    width: 28,
-    alignItems: 'center',
-  },
-  exNumText: {
-    color: colors.primary,
-    fontSize: fontSize.md,
-    fontWeight: '800',
   },
   exThumb: {
     width: THUMB_SIZE,

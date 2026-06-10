@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Modal, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Modal, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { colors, spacing, fontSize, borderRadius } from '../../src/components/Theme';
 
 interface BottomSheetProps {

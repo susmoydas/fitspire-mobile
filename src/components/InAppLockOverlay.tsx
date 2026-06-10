@@ -1,11 +1,11 @@
 import React, { useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   Animated,
 } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, fontSize, spacing, borderRadius } from '../theme/colors';
 

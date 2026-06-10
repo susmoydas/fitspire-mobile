@@ -1,4 +1,5 @@
 import type { DailyActivity, CompletedWorkout, WorkoutSession } from '../types';
+import type { WorkoutPlan } from '../data/workoutPlans';
 import { getExerciseById } from '../data/exercises';
 
 export interface WeekDayStatus {
@@ -344,12 +345,16 @@ export function getNextWorkout(
 // Recent workouts with plan images
 export function getRecentWorkoutsWithImages(
   completedWorkoutLog: CompletedWorkout[],
-  plans: { id: string; imageUrl: string; title: string }[],
+  plans: WorkoutPlan[],
   limit = 5
 ): (CompletedWorkout & { imageUrl?: string })[] {
   return completedWorkoutLog.slice(0, limit).map((cw) => {
     const plan = plans.find((p) => p.id === cw.workoutId || p.title === cw.workoutTitle);
-    return { ...cw, imageUrl: plan?.imageUrl || '' };
+    let imageUrl = plan?.imageUrl || '';
+    if (!imageUrl && plan?.exercises?.length) {
+      imageUrl = plan.exercises[0].imageUrl || '';
+    }
+    return { ...cw, imageUrl };
   });
 }
 

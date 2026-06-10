@@ -1,5 +1,6 @@
 import React, { useRef, useCallback, useImperativeHandle, forwardRef, useState, useEffect } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
+import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { WebView } from 'react-native-webview';
 import { colors, fontSize, spacing, borderRadius } from '../theme/colors';
 import type { Coordinate } from '../types';

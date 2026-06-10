@@ -1,13 +1,13 @@
 import React, { useState, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
   Dimensions,
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { Image } from 'expo-image';
 import { colors, spacing, borderRadius } from '../theme/colors';
 

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   StatusBar,
   AppState,
@@ -9,13 +8,13 @@ import {
   Modal,
   TouchableOpacity,
 } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Pedometer } from 'expo-sensors';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, fontSize, spacing, borderRadius, buttonHeight } from '../theme/colors';
 import FloatingLockButton from '../components/FloatingLockButton';
-
-const AVG_STRIDE_LENGTH_M = 0.762;
+import { calculateCaloriesFromSteps, calculateDistanceKm } from '../utils/calculations';
 
 export default function StepCounterScreen() {
   const insets = useSafeAreaInsets();
@@ -96,7 +95,7 @@ export default function StepCounterScreen() {
     }
   };
 
-  const distance = steps * AVG_STRIDE_LENGTH_M;
+  const distanceKm = calculateDistanceKm(steps, 175);
   const mins = Math.floor(duration / 60);
   const secs = duration % 60;
   const displayTime = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
@@ -128,7 +127,7 @@ export default function StepCounterScreen() {
             <Text style={styles.stepsLabel}>Total Steps</Text>
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{(distance / 1000).toFixed(2)}</Text>
+                <Text style={styles.statValue}>{distanceKm.toFixed(2)}</Text>
                 <Text style={styles.statLabel}>km</Text>
               </View>
               <View style={styles.statDivider} />
@@ -138,7 +137,7 @@ export default function StepCounterScreen() {
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{Math.round(distance * 0.035 * 70)}</Text>
+                <Text style={styles.statValue}>{calculateCaloriesFromSteps(steps, 70)}</Text>
                 <Text style={styles.statLabel}>cal</Text>
               </View>
             </View>

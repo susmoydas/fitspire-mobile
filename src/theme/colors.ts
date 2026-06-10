@@ -1,3 +1,13 @@
+import { Dimensions } from 'react-native';
+
+const BASE_WIDTH = 375;
+const screenWidth = Dimensions.get('window').width;
+const fontScale = Math.min(Math.max(screenWidth / BASE_WIDTH, 0.85), 1.3);
+
+function scaleFont(size: number): number {
+  return Math.round(size * fontScale);
+}
+
 export const colors = {
   bg: '#050505',
   bgSecondary: '#0E0E0F',
@@ -35,15 +45,15 @@ export const spacing = {
 };
 
 export const fontSize = {
-  xs: 12,
-  sm: 14,
-  md: 16,
-  lg: 18,
-  xl: 22,
-  xxl: 28,
-  title: 32,
-  hero: 38,
-  giant: 52,
+  xs: scaleFont(12),
+  sm: scaleFont(14),
+  md: scaleFont(16),
+  lg: scaleFont(18),
+  xl: scaleFont(22),
+  xxl: scaleFont(28),
+  title: scaleFont(32),
+  hero: scaleFont(38),
+  giant: scaleFont(52),
 };
 
 export const borderRadius = {
@@ -67,4 +77,16 @@ export const cardPadding = {
   sm: 12,
   md: 16,
   lg: 20,
+};
+
+export const typography = {
+  fontFamily: 'Lexend_400Regular',
+  weight: {
+    regular: 'Lexend_400Regular',
+    medium: 'Lexend_500Medium',
+    semiBold: 'Lexend_600SemiBold',
+    bold: 'Lexend_700Bold',
+    extraBold: 'Lexend_800ExtraBold',
+    black: 'Lexend_900Black',
+  },
 };

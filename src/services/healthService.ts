@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { useStore } from '../store/useStore';
+import { calculateCaloriesFromSteps } from '../utils/calculations';
 
 type HealthConnectorId = 'apple_health' | 'google_fit' | 'health_connect' | 'fitbit' | 'samsung_health';
 
@@ -165,7 +166,7 @@ export async function fetchHealthData(id: HealthConnectorId): Promise<Partial<He
           steps,
           heartRate: avgHeartRate,
           distanceKm: distance / 1000,
-          calories: Math.round(steps * 0.04),
+          calories: calculateCaloriesFromSteps(steps, 70),
         };
       } catch {
         return null;

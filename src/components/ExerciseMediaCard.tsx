@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { Image, ImageContentFit } from 'expo-image';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, borderRadius, spacing, fontSize } from '../theme/colors';

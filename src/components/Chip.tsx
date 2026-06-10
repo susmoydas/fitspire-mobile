@@ -1,5 +1,6 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ViewStyle } from 'react-native';
+import { TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { colors, fontSize, spacing, borderRadius } from '../theme/colors';
 
 interface ChipProps {

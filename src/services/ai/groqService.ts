@@ -20,36 +20,59 @@ export async function sendGroqChatCompletion(
   temperature = 0.6,
   maxTokens = 700,
 ): Promise<GroqResponse> {
+  const key = AI_CONFIG.geminiApiKey;
+  if (!key) {
+    return { success: false, error: getUserFriendlyError() };
+  }
+
+  const model = AI_CONFIG.geminiModel || 'gemini-2.0-flash';
+
   try {
-    const response = await fetch(`${AI_CONFIG.groqBaseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${AI_CONFIG.groqApiKey}`,
-      },
-      body: JSON.stringify({
-        model: AI_CONFIG.groqModel,
-        messages,
+    const systemMsg = messages.find((m) => m.role === 'system');
+    const userMsg = messages.find((m) => m.role === 'user');
+
+    const body: Record<string, unknown> = {
+      contents: [
+        {
+          parts: [{ text: userMsg?.content || '' }],
+        },
+      ],
+      generationConfig: {
         temperature,
-        max_tokens: maxTokens,
-      }),
-    });
+        maxOutputTokens: maxTokens,
+      },
+    };
+
+    if (systemMsg?.content) {
+      body.systemInstruction = {
+        parts: [{ text: systemMsg.content }],
+      };
+    }
+
+    const response = await fetch(
+      `${AI_CONFIG.geminiBaseUrl}/models/${model}:generateContent?key=${key}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    );
 
     if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new Error(`Groq API error ${response.status}: ${body}`);
+      const bodyText = await response.text().catch(() => '');
+      throw new Error(`Gemini API error ${response.status}: ${bodyText}`);
     }
 
     const data = await response.json();
-    const content = data?.choices?.[0]?.message?.content;
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    if (!content) {
-      return { success: false, error: 'AI assistant is not available right now. Please try again later.' };
+    if (!text) {
+      return { success: false, error: getUserFriendlyError() };
     }
 
-    return { success: true, content: content.trim() };
+    return { success: true, content: text.trim() };
   } catch (error) {
-    if (__DEV__) console.warn('[groqService]', error);
+    if (__DEV__) console.warn('[geminiService]', error);
     return { success: false, error: getUserFriendlyError() };
   }
 }

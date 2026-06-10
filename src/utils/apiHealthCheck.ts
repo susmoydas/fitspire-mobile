@@ -9,7 +9,7 @@ export function checkApiHealth(): void {
   console.group('[API Health Check]');
   console.log(status(env.EXERCISEDB_API_KEY, 'ExerciseDB API Key'));
   console.log(status(env.EXERCISEDB_BASE_URL, 'ExerciseDB Base URL'));
-  console.log(status(env.GROQ_API_KEY, 'Groq API Key'));
-  console.log(status(env.GROQ_MODEL, 'Groq Model'));
+  console.log(status(env.GEMINI_API_KEY, 'Gemini API Key'));
+  console.log(status(env.GEMINI_MODEL, 'Gemini Model'));
   console.groupEnd();
 }

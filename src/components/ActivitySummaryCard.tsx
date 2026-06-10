@@ -1,10 +1,10 @@
 import React from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Dimensions,
 } from 'react-native';
+import { Text } from '@/components/ui/text';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { MaterialIcons } from '@expo/vector-icons';
 

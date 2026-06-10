@@ -1,13 +1,13 @@
 import React, { useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -29,6 +29,8 @@ import {
   getVolumeTrend,
   getWeeklyStepData,
 } from '../utils/progressData';
+import { useStepCounter } from '../hooks/useStepCounter';
+import { calculateCaloriesFromSteps, calculateDistanceKm } from '../utils/calculations';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -398,13 +400,21 @@ function StepsCard() {
   const profile = useStore((s) => s.profile);
   const stepGoal = profile?.stepGoal || 10000;
   const todaySteps = useStore((s) => s.todaySteps);
+  const { steps: pedometerSteps, distanceKm, calories: stepCalories, isAvailable, permissionGranted } = useStepCounter();
+
+  const hasLiveSteps = isAvailable && permissionGranted;
+  const displaySteps = hasLiveSteps ? pedometerSteps : todaySteps;
+  const heightCm = profile?.height || 170;
+  const weightKg = profile?.weight || 70;
+  const displayDistance = hasLiveSteps ? distanceKm : calculateDistanceKm(displaySteps, heightCm);
+  const displayCalories = hasLiveSteps ? stepCalories : calculateCaloriesFromSteps(displaySteps, weightKg);
 
   const weeklyData = useMemo(() => {
     return getWeeklyStepData(activityLog, new Date(), stepGoal);
   }, [activityLog, stepGoal]);
 
   const maxSteps = Math.max(...weeklyData.map((d) => d.steps), 1);
-  const progress = Math.min((todaySteps / stepGoal) * 100, 100);
+  const progress = Math.min((displaySteps / stepGoal) * 100, 100);
 
   return (
     <TouchableOpacity
@@ -422,7 +432,7 @@ function StepsCard() {
 
       <View style={styles.stepsBody}>
         <View style={styles.stepsLeft}>
-          <Text style={styles.stepsCount}>{formatNumber(todaySteps)}</Text>
+          <Text style={styles.stepsCount}>{formatNumber(displaySteps)}</Text>
           <View style={styles.stepsProgressBg}>
             <View style={[styles.stepsProgressFill, { width: `${progress}%` }]} />
           </View>
@@ -430,6 +440,14 @@ function StepsCard() {
             <Text style={{ color: colors.text, fontWeight: '700' }}>{Math.round(progress)}%</Text>
             {' of '}{formatNumber(stepGoal)} goal
           </Text>
+          <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs }}>
+            <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>
+              <MaterialIcons name="directions-walk" size={12} color={colors.textMuted} /> {displayDistance} km
+            </Text>
+            <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>
+              <MaterialIcons name="local-fire-department" size={12} color={colors.textMuted} /> {displayCalories} cal
+            </Text>
+          </View>
         </View>
 
         {/* Mini weekly chart */}
@@ -521,35 +539,48 @@ function RecentWorkoutsCard() {
     <View style={styles.sectionContainer}>
       <SectionHeader title="Recent Workouts" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recentRow}>
-        {recentWorkouts.map((w, i) => (
-          <TouchableOpacity
-            key={w.workoutId + i}
-            style={styles.recentCard}
-            activeOpacity={0.85}
-            onPress={() => nav.navigate('WorkoutDetail', { workoutId: w.workoutId || '', workoutTitle: w.workoutTitle })}
-          >
-            <Image
-              source={{ uri: w.imageUrl || 'https://placehold.co/400x300/1a1a1c/666?text=Workout' }}
-              style={styles.recentCardImage}
-              contentFit="cover"
-            />
-            <View style={styles.recentCardContent}>
-              <View style={styles.recentCardTag}>
-                <MaterialIcons name="check-circle" size={12} color={colors.success} />
-                <Text style={styles.recentCardTagText}>Completed</Text>
-              </View>
-              <Text style={styles.recentCardTitle} numberOfLines={1}>{w.workoutTitle}</Text>
-              <View style={styles.recentCardMeta}>
-                <Text style={styles.recentCardMetaText}>{w.exercisesCompleted} exercises</Text>
-                <Text style={styles.recentCardMetaDot}>•</Text>
-                <Text style={styles.recentCardMetaText}>{formatDuration(Math.round(w.duration / 60))}</Text>
-              </View>
-              {w.calories > 0 && (
-                <Text style={styles.recentCardCalories}>{w.calories} cal</Text>
+        {recentWorkouts.map((w, i) => {
+          const plan = plans.find((p) => p.id === w.workoutId || p.title === w.workoutTitle);
+          const firstEx = plan?.exercises?.[0];
+          return (
+            <TouchableOpacity
+              key={w.workoutId + i}
+              style={styles.recentCard}
+              activeOpacity={0.85}
+              onPress={() => nav.navigate('WorkoutDetail', { workoutId: w.workoutId || '', workoutTitle: w.workoutTitle })}
+            >
+              {firstEx ? (
+                <ExerciseMediaCard
+                  exercise={firstEx}
+                  aspectRatio={1}
+                  rounded={borderRadius.md}
+                  mode="detail"
+                />
+              ) : (
+                <Image
+                  source={{ uri: w.imageUrl || 'https://placehold.co/400x300/1a1a1c/666?text=Workout' }}
+                  style={styles.recentCardImage}
+                  contentFit="cover"
+                />
               )}
-            </View>
-          </TouchableOpacity>
-        ))}
+              <View style={styles.recentCardContent}>
+                <View style={styles.recentCardTag}>
+                  <MaterialIcons name="check-circle" size={12} color={colors.success} />
+                  <Text style={styles.recentCardTagText}>Completed</Text>
+                </View>
+                <Text style={styles.recentCardTitle} numberOfLines={1}>{w.workoutTitle}</Text>
+                <View style={styles.recentCardMeta}>
+                  <Text style={styles.recentCardMetaText}>{w.exercisesCompleted} exercises</Text>
+                  <Text style={styles.recentCardMetaDot}>•</Text>
+                  <Text style={styles.recentCardMetaText}>{formatDuration(Math.round(w.duration / 60))}</Text>
+                </View>
+                {w.calories > 0 && (
+                  <Text style={styles.recentCardCalories}>{w.calories} cal</Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
     </View>
   );

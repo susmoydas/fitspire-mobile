@@ -1,14 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   Dimensions,
   Modal,
-  TextInput,
 } from 'react-native';
+import { Text } from '@/components/ui/text';
+import { TextInput } from '@/components/ui/text-input';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,6 +17,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { colors, fontSize, spacing, borderRadius } from '../theme/colors';
 import { useStore } from '../store/useStore';
 import { getWeeklyStepData, getMonthlyStepData, getStepStats } from '../utils/progressData';
+import { calculateCaloriesFromSteps, calculateDistanceKm } from '../utils/calculations';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -33,14 +34,6 @@ function formatDuration(minutes: number): string {
 
 function estimateActiveMinutes(steps: number): number {
   return Math.round(steps / (10000 / 30));
-}
-
-function estimateDistanceKm(steps: number): number {
-  return parseFloat(((steps * 0.7) / 1000).toFixed(1));
-}
-
-function estimateCalories(steps: number, weightKg: number): number {
-  return Math.round(3.5 * weightKg * (steps / (10000 / 0.5)));
 }
 
 function formatNumber(n: number): string {
@@ -145,9 +138,7 @@ export default function StepDetailScreen() {
         <View style={styles.currentCard}>
           <View style={styles.currentTopRow}>
             <MaterialIcons name="directions-walk" size={28} color={colors.primary} />
-            <TouchableOpacity onPress={() => { setCustomGoal(String(stepGoal)); setShowGoalEditor(true); }}>
-              <MaterialIcons name="settings" size={18} color={colors.textMuted} />
-            </TouchableOpacity>
+            <View />
           </View>
 
           <Text style={styles.currentSteps}>{formatNumber(displaySteps)}</Text>
@@ -179,12 +170,12 @@ export default function StepDetailScreen() {
         <View style={styles.metricsRow}>
           <View style={styles.metricsCard}>
             <MaterialIcons name="directions-walk" size={18} color={colors.info} />
-            <Text style={styles.metricsValue}>{estimateDistanceKm(displaySteps)} km</Text>
+            <Text style={styles.metricsValue}>{calculateDistanceKm(displaySteps, profile.height || 170)} km</Text>
             <Text style={styles.metricsLabel}>Distance</Text>
           </View>
           <View style={styles.metricsCard}>
             <MaterialIcons name="local-fire-department" size={18} color={colors.warning} />
-            <Text style={styles.metricsValue}>{estimateCalories(displaySteps, profile.weight || 70)}</Text>
+            <Text style={styles.metricsValue}>{calculateCaloriesFromSteps(displaySteps, profile.weight || 70)}</Text>
             <Text style={styles.metricsLabel}>Calories</Text>
           </View>
           <View style={styles.metricsCard}>
@@ -223,49 +214,64 @@ export default function StepDetailScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Chart */}
-        <View style={styles.chartContainer}>
-          <View style={styles.chart}>
-            <View style={styles.yAxis}>
-              {[maxSteps, Math.round(maxSteps / 2), 0].map((val, i) => (
-                <Text key={i} style={styles.yLabel}>{formatNumber(val)}</Text>
-              ))}
-            </View>
-            <View style={styles.barsContainer}>
-              {stepData.map((d, i) => {
-                const height = maxSteps > 0 ? (d.steps / maxSteps) * CHART_HEIGHT : 4;
-                const isToday = d.key === new Date().toISOString().split('T')[0];
-                const inCurrentMonth = d.date.getMonth() === currentDateMonth;
-                const dimmed = viewMode === 'monthly' && !inCurrentMonth;
-
-                return (
-                  <View key={i} style={[styles.barCol, dimmed && styles.barColDimmed]}>
-                    <View style={styles.barWrapper}>
-                      {d.steps > 0 && (
-                        <Text style={styles.barValue}>{formatNumber(d.steps)}</Text>
-                      )}
-                      <View
-                        style={[
-                          styles.bar,
-                          {
-                            height: Math.max(height, 4),
-                            backgroundColor: d.steps >= d.goal ? colors.success : (isToday ? colors.primary : colors.primary + '50'),
-                          },
-                        ]}
-                      />
+        {/* Chart — weekly bar chart or monthly calendar grid */}
+        {viewMode === 'weekly' ? (
+          <View style={styles.chartContainer}>
+            <View style={styles.chart}>
+              <View style={styles.yAxis}>
+                {[maxSteps, Math.round(maxSteps / 2), 0].map((val, i) => (
+                  <Text key={i} style={styles.yLabel}>{formatNumber(val)}</Text>
+                ))}
+              </View>
+              <View style={styles.barsContainer}>
+                {stepData.map((d, i) => {
+                  const height = maxSteps > 0 ? (d.steps / maxSteps) * CHART_HEIGHT : 4;
+                  const isToday = d.key === new Date().toISOString().split('T')[0];
+                  return (
+                    <View key={i} style={styles.barCol}>
+                      <View style={styles.barWrapper}>
+                        {d.steps > 0 && (
+                          <Text style={styles.barValue}>{formatNumber(d.steps)}</Text>
+                        )}
+                        <View
+                          style={[
+                            styles.bar,
+                            {
+                              height: Math.max(height, 4),
+                              backgroundColor: d.steps >= d.goal ? colors.success : (isToday ? colors.primary : colors.primary + '50'),
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.barLabel}>
+                        {['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.date.getDay()]}
+                      </Text>
                     </View>
-                    <Text style={styles.barLabel}>
-                      {viewMode === 'weekly'
-                        ? ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.date.getDay()]
-                        : d.date.getDate()
-                      }
-                    </Text>
-                  </View>
-                );
-              })}
+                  );
+                })}
+              </View>
             </View>
           </View>
-        </View>
+        ) : (
+          <View style={styles.monthCalContainer}>
+            <View style={styles.monthCalGrid}>
+              {stepData
+                .filter((d) => d.date.getMonth() === currentDateMonth && d.date.getFullYear() === currentDateYear)
+                .map((d) => {
+                  const isToday = d.key === new Date().toISOString().split('T')[0];
+                  return (
+                    <View key={d.key} style={[styles.monthCalDay, isToday && styles.monthCalDayToday]}>
+                      <Text style={[styles.monthCalDayNum, isToday && styles.monthCalDayNumToday]}>{d.date.getDate()}</Text>
+                      <View style={[styles.monthCalDot, { backgroundColor: d.steps > 0 ? colors.success : colors.cardElevated }]} />
+                      {d.steps > 0 && (
+                        <Text style={styles.monthCalSteps} numberOfLines={1}>{formatNumber(d.steps)}</Text>
+                      )}
+                    </View>
+                  );
+                })}
+            </View>
+          </View>
+        )}
 
         {/* Stats */}
         <View style={styles.statsGrid}>
@@ -298,29 +304,6 @@ export default function StepDetailScreen() {
             <Text style={styles.todayBtnText}>Back to {viewMode === 'weekly' ? 'current week' : 'current month'}</Text>
           </TouchableOpacity>
         )}
-
-        {/* Map Preview */}
-        <TouchableOpacity
-          style={styles.mapPreviewCard}
-          onPress={() => nav.navigate('MovementMap' as never)}
-          activeOpacity={0.85}
-        >
-          <View style={styles.mapPreviewTop}>
-            <MaterialIcons name="map" size={22} color={colors.primary} />
-            <View style={styles.mapPreviewInfo}>
-              <Text style={styles.mapPreviewTitle}>Today's Route</Text>
-              <Text style={styles.mapPreviewSub}>
-                {estimateDistanceKm(displaySteps)} km · {displaySteps.toLocaleString()} steps
-              </Text>
-            </View>
-            <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
-          </View>
-          <View style={styles.mapPreviewGraphic}>
-            <View style={styles.mapPreviewDotStart} />
-            <View style={styles.mapPreviewLine} />
-            <View style={styles.mapPreviewDotEnd} />
-          </View>
-        </TouchableOpacity>
 
         {/* View full history */}
         <TouchableOpacity
@@ -578,9 +561,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
   },
-  barColDimmed: {
-    opacity: 0.3,
-  },
   barWrapper: {
     alignItems: 'center',
     justifyContent: 'flex-end',
@@ -600,6 +580,48 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     color: colors.textMuted,
     marginTop: 4,
+  },
+
+  // Monthly calendar grid
+  monthCalContainer: {
+    marginHorizontal: spacing.lg,
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.card,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  monthCalGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 2,
+    justifyContent: 'flex-start',
+  },
+  monthCalDay: {
+    width: '14%',
+    alignItems: 'center',
+    paddingVertical: 6,
+    gap: 2,
+    borderRadius: borderRadius.xs,
+  },
+  monthCalDayToday: {
+    backgroundColor: colors.primary + '20',
+  },
+  monthCalDayNum: {
+    fontSize: fontSize.xs,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  monthCalDayNumToday: {
+    color: colors.primary,
+  },
+  monthCalDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+  },
+  monthCalSteps: {
+    fontSize: 7,
+    color: colors.textMuted,
   },
 
   // Metrics row
@@ -633,62 +655,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Map preview
-  mapPreviewCard: {
-    marginHorizontal: spacing.lg,
-    backgroundColor: colors.card,
-    borderRadius: borderRadius.card,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  mapPreviewTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  mapPreviewInfo: {
-    flex: 1,
-  },
-  mapPreviewTitle: {
-    fontSize: fontSize.md,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  mapPreviewSub: {
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    marginTop: 1,
-  },
-  mapPreviewGraphic: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 40,
-    gap: 4,
-  },
-  mapPreviewDotStart: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.success,
-  },
-  mapPreviewLine: {
-    flex: 1,
-    height: 2,
-    backgroundColor: colors.primary + '40',
-    borderRadius: 1,
-  },
-  mapPreviewDotEnd: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.primary,
-  },
-
-  // Stats
+  // Stats grid
   statsGrid: {
     flexDirection: 'row',
     marginHorizontal: spacing.lg,

@@ -1,10 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   FlatList,
   Modal,
   KeyboardAvoidingView,
@@ -12,6 +10,8 @@ import {
   ActivityIndicator,
   Keyboard,
 } from 'react-native';
+import { Text } from '@/components/ui/text';
+import { TextInput } from '@/components/ui/text-input';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, fontSize, spacing, borderRadius, buttonHeight } from '../theme/colors';
@@ -106,17 +106,29 @@ export default function AIFitnessAssistant({ visible, onClose }: AIFitnessAssist
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
-    const result = await sendFitnessChatMessage(text, getFitnessAIContext());
+    try {
+      const result = await sendFitnessChatMessage(text, getFitnessAIContext());
 
-    const aiMsg: Message = {
-      id: `ai-${Date.now()}`,
-      role: 'ai',
-      text: result.success
-        ? (result.reply || 'No response.')
-        : (result.error || 'AI assistant is not available right now. Please try again later.'),
-    };
-    setMessages((prev) => [...prev, aiMsg]);
-    setIsLoading(false);
+      const aiMsg: Message = {
+        id: `ai-${Date.now()}`,
+        role: 'ai',
+        text: result.success
+          ? (result.reply || 'No response.')
+          : (result.error || 'AI assistant is not available right now. Please try again later.'),
+      };
+      setMessages((prev) => [...prev, aiMsg]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `ai-${Date.now()}`,
+          role: 'ai',
+          text: 'AI assistant is not available right now. Please try again later.',
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const showSuggestions = messages.length <= 1 && !isLoading;
@@ -125,7 +137,7 @@ export default function AIFitnessAssistant({ visible, onClose }: AIFitnessAssist
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
@@ -177,10 +189,10 @@ export default function AIFitnessAssistant({ visible, onClose }: AIFitnessAssist
               placeholderTextColor={colors.textMuted}
               value={inputText}
               onChangeText={setInputText}
-              multiline
               maxLength={500}
               onSubmitEditing={() => handleSend()}
               returnKeyType="send"
+              blurOnSubmit
               editable={!isLoading}
             />
             <TouchableOpacity
@@ -317,20 +329,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: colors.borderLight,
   },
-  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   textInput: {
     flex: 1,
     backgroundColor: colors.card,
     borderRadius: borderRadius.card,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 2,
     fontSize: fontSize.md,
     color: colors.text,
-    maxHeight: 100,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderLight,
   },
   sendBtn: {
     width: 48,

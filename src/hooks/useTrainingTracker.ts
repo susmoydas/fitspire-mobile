@@ -5,6 +5,7 @@ import { Pedometer } from 'expo-sensors';
 import * as TaskManager from 'expo-task-manager';
 import type { Coordinate, TrainingMode, TrainingSession } from '../types';
 import { useStore } from '../store/useStore';
+import { calculateCaloriesFromDuration, getStrideLength, haversineDistanceKm } from '../utils/calculations';
 
 const LOCATION_TASK = 'fitspire-background-location';
 
@@ -19,37 +20,7 @@ interface TrainingTrackerState {
   avgPace: string;
 }
 
-const MET_VALUES: Record<TrainingMode, number> = {
-  walking: 3.5,
-  running: 8.0,
-  riding: 6.0,
-};
-
 const MAX_ROUTE_POINTS = 5000;
-
-function getStrideLength(mode: TrainingMode, heightCm: number): number {
-  if (mode === 'walking') return (heightCm * 0.415) / 100;
-  if (mode === 'running') return (heightCm * 0.65) / 100;
-  return 0;
-}
-
-function haversineDistance(coords: Coordinate[]): number {
-  let total = 0;
-  for (let i = 1; i < coords.length; i++) {
-    const lat1 = coords[i - 1].latitude * Math.PI / 180;
-    const lon1 = coords[i - 1].longitude * Math.PI / 180;
-    const lat2 = coords[i].latitude * Math.PI / 180;
-    const lon2 = coords[i].longitude * Math.PI / 180;
-    const dLat = lat2 - lat1;
-    const dLon = lon2 - lon1;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    total += 6371000 * c;
-  }
-  return total;
-}
 
 function calculatePace(duration: number, distance: number): string {
   if (distance < 1) return '--:--';
@@ -93,7 +64,7 @@ export function useTrainingTracker(mode: TrainingMode) {
       const recoveredRoute = Array.isArray(activeSession.route) ? activeSession.route : [];
       const recoveredDistance = activeSession.distanceKm > 0
         ? activeSession.distanceKm * 1000
-        : (recoveredRoute.length > 1 ? haversineDistance(recoveredRoute) : 0);
+        : (recoveredRoute.length > 1 ? haversineDistanceKm(recoveredRoute) * 1000 : 0);
       return {
         status: getInitialStatus(activeSession.status),
         timer: activeSession.durationSeconds,
@@ -178,7 +149,7 @@ export function useTrainingTracker(mode: TrainingMode) {
           const newRoute = prev.route.length >= MAX_ROUTE_POINTS
             ? [...prev.route.slice(1), coord]
             : [...prev.route, coord];
-          const dist = haversineDistance(newRoute);
+          const dist = haversineDistanceKm(newRoute) * 1000;
           const pace = calculatePace(prev.timer, dist);
           return {
             ...prev,
@@ -200,7 +171,7 @@ export function useTrainingTracker(mode: TrainingMode) {
       const newRoute = prev.route.length + coords.length >= MAX_ROUTE_POINTS
         ? [...prev.route.slice(coords.length), ...coords]
         : [...prev.route, ...coords];
-      const dist = haversineDistance(newRoute);
+      const dist = haversineDistanceKm(newRoute) * 1000;
       const pace = calculatePace(prev.timer, dist);
       return {
         ...prev,
@@ -221,13 +192,12 @@ export function useTrainingTracker(mode: TrainingMode) {
           (Date.now() - startTimeRef.current - pausedDurationRef.current) / 1000
         );
         const weight = profile.weight || 70;
-        const met = MET_VALUES[mode];
-        const cal = met * weight * (elapsed / 3600);
+        const cal = calculateCaloriesFromDuration(elapsed, weight, mode);
         const pace = calculatePace(elapsed, prev.distance);
         return {
           ...prev,
           timer: elapsed,
-          calories: Math.round(cal),
+          calories: cal,
           avgPace: pace,
         };
       });
@@ -277,20 +247,18 @@ export function useTrainingTracker(mode: TrainingMode) {
               if (prev.status !== 'active') return prev;
               const weight = profile.weight || 70;
               const heightCm = profile.height || 170;
-              const strideLen = getStrideLength(mode, heightCm);
+              const strideLen = getStrideLength(heightCm, mode);
               const newSteps = prev.steps + delta;
               let newDistance = prev.distance;
               if (mode !== 'riding') {
                 newDistance = newSteps * strideLen;
               }
-              const met = MET_VALUES[mode];
-              const durationH = prev.timer / 3600;
-              const cal = met * weight * durationH;
+              const cal = calculateCaloriesFromDuration(prev.timer, weight, mode);
               return {
                 ...prev,
                 steps: newSteps,
                 distance: newDistance,
-                calories: Math.round(cal),
+                calories: cal,
               };
             });
           }

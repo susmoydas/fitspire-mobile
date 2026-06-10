@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   Modal,
@@ -9,6 +8,7 @@ import {
   Dimensions,
   Pressable,
 } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fontSize, spacing, borderRadius } from '../theme/colors';
 import { MaterialIcons } from '@expo/vector-icons';

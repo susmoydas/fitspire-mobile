@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   Dimensions,
   FlatList,
 } from 'react-native';
+import { Text } from '@/components/ui/text';
+import { TextInput } from '@/components/ui/text-input';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -154,7 +154,7 @@ export default function WorkoutScreen() {
     </>
   );
 
-  const fabBottom = insets.bottom + 88;
+  const fabBottom = insets.bottom + 24;
 
   if (loading && plans.length === 0) {
     return (

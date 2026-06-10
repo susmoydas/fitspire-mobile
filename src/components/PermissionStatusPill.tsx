@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { colors, fontSize, spacing, borderRadius } from '../theme/colors';
 import type { PermissionLevel } from '../services/permissions';
 

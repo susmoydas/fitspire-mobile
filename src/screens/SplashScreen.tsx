@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Image, Platform } from 'react-native';
+import { View, StyleSheet, Image, Platform } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { useStore } from '../store/useStore';

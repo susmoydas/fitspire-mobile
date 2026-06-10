@@ -1,7 +1,6 @@
 import React, { useMemo, useState, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -10,6 +9,7 @@ import {
   Animated,
   PanResponder,
 } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -158,8 +158,8 @@ export default function HomeScreen() {
   const displaySteps = hasLiveSteps ? pedometerSteps : todaySteps;
   const showStepBanner =
     Platform.OS === 'android' &&
-    healthConnectOptIn !== 'pending' &&
-    (!healthConnectActive || needsHealthConnectInstall);
+    healthConnectOptIn === 'pending' &&
+    !needsHealthConnectInstall;
   const progressPct = Math.min(displaySteps / stepGoal, 1);
   const progressOffset = CIRCUMFERENCE * (1 - progressPct);
 

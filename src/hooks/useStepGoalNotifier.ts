@@ -4,6 +4,7 @@ import {
   setStepNotificationActionHandler,
   useNotifications,
 } from './useNotifications';
+import { calculateCaloriesFromSteps, calculateDistanceKm } from '../utils/calculations';
 
 const DEBOUNCE_MS = 30000;
 
@@ -56,8 +57,9 @@ export function useStepLiveActivity(opts: { permissionGranted: boolean; isAvaila
     }
 
     const weightKg = profile?.weight || 70;
-    const calories = Math.round(3.5 * weightKg * (todaySteps / (10000 / 0.5)));
-    const distanceKm = parseFloat(((todaySteps * 0.7) / 1000).toFixed(2));
+    const heightCm = profile?.height || 170;
+    const calories = calculateCaloriesFromSteps(todaySteps, weightKg);
+    const distanceKm = calculateDistanceKm(todaySteps, heightCm);
     const goal = profile?.stepGoal || 10000;
 
     const now = Date.now();

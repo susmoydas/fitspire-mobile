@@ -291,11 +291,10 @@ function TrackingPermissionsSection() {
   return (
     <View style={styles.sectionCard}>
       <View style={styles.trackingHeader}>
-        <Text style={styles.sectionTitle}>Tracking & Permissions</Text>
         <TouchableOpacity onPress={refresh} style={styles.recheckBtn} activeOpacity={0.7}>
-          <MaterialIcons name="refresh" size={14} color={colors.primary} />
-          <Text style={styles.recheckText}>Recheck</Text>
+          <MaterialIcons name="refresh" size={18} color={colors.primary} />
         </TouchableOpacity>
+        <Text style={styles.sectionTitle}>Tracking & Permissions</Text>
       </View>
 
       <View style={styles.trackingRow}>
@@ -526,18 +525,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   recheckBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: colors.cardElevated,
-    borderRadius: borderRadius.full,
-  },
-  recheckText: {
-    color: colors.primary,
-    fontSize: fontSize.xs,
-    fontWeight: '700',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   trackingRow: {
     flexDirection: 'row',

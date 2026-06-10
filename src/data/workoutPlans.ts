@@ -83,21 +83,31 @@ function getDifficultyLevel(d: string): number {
 }
 
 let cachedPlans: WorkoutPlan[] | null = null;
+let cachedPlansPromise: Promise<WorkoutPlan[]> | null = null;
 let _usedApiSuccessfully = false;
 
 export function usedApiSuccessfully(): boolean {
   return _usedApiSuccessfully;
 }
 
-const idCounter = { value: 0 };
+import { getNetworkStateAsync } from 'expo-network';
 
-function resetIdCounter() {
-  idCounter.value = 0;
+async function checkConnectivity(): Promise<boolean> {
+  try {
+    const state = await getNetworkStateAsync();
+    return state.isConnected === true && state.isInternetReachable !== false;
+  } catch {
+    return false;
+  }
 }
 
 function generateWorkoutId(title: string): string {
-  idCounter.value += 1;
-  return `workout-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${idCounter.value}`;
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    hash = ((hash << 5) - hash + title.charCodeAt(i)) | 0;
+  }
+  return `workout-${slug}-${Math.abs(hash)}`;
 }
 
 function pickExercises(
@@ -396,17 +406,31 @@ export function generateWorkoutPlans(exerciseList: Exercise[]): WorkoutPlan[] {
 
 export async function getWorkoutPlans(): Promise<WorkoutPlan[]> {
   if (cachedPlans) return cachedPlans;
+  if (cachedPlansPromise) return cachedPlansPromise;
+
+  const connectivityCheck = checkConnectivity();
+
+  cachedPlansPromise = (async () => {
+    try {
+      const apiExercises = await fetchAllExercisesPaginated();
+      if (apiExercises.length > 5) {
+        cachedPlans = generateWorkoutPlans(apiExercises);
+        _usedApiSuccessfully = true;
+        return cachedPlans;
+      }
+    } catch {}
+
+    const online = await connectivityCheck;
+    _usedApiSuccessfully = online;
+    cachedPlans = generateWorkoutPlans(exercises);
+    return cachedPlans;
+  })();
+
   try {
-    const apiExercises = await fetchAllExercisesPaginated();
-    if (apiExercises.length > 5) {
-      cachedPlans = generateWorkoutPlans(apiExercises);
-      _usedApiSuccessfully = true;
-      return cachedPlans;
-    }
-  } catch {}
-  _usedApiSuccessfully = false;
-  cachedPlans = generateWorkoutPlans(exercises);
-  return cachedPlans;
+    return await cachedPlansPromise;
+  } finally {
+    cachedPlansPromise = null;
+  }
 }
 
 export function getCachedPlans(): WorkoutPlan[] {

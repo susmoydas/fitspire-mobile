@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, fontSize, spacing, borderRadius } from '../theme/colors';
 
@@ -33,13 +34,8 @@ export default React.memo(function SetTrackerRow({
     <View style={[styles.row, isActive && styles.activeRow, completed && styles.completedRow]}>
       <View style={styles.left}>
         <View style={[styles.setCircle, { borderColor: circleBg }, completed && styles.setCircleDone, isActive && { backgroundColor: circleBg + '20' }]}>
-          {completed ? (
-            <MaterialIcons name="check" size={14} color="#fff" />
-          ) : (
-            <Text style={[styles.setNumber, isActive && { color: colors.primary }]}>{setNumber}</Text>
-          )}
+          {completed && <MaterialIcons name="check" size={14} color="#fff" />}
         </View>
-        <Text style={styles.setLabel}>Set {setNumber}</Text>
         {lastKg !== undefined && lastReps !== undefined && !completed && (
           <Text style={styles.lastLabel}>Last: {lastKg}kg × {lastReps}</Text>
         )}
@@ -144,14 +140,6 @@ const styles = StyleSheet.create({
     borderColor: colors.success,
     backgroundColor: colors.success,
   },
-  setNumber: {
-    color: colors.textSecondary,
-    fontWeight: '700',
-    fontSize: fontSize.sm,
-  },
-  setNumberDone: {
-    color: colors.text,
-  },
   controlGroup: {
     flex: 1,
     flexDirection: 'row',
@@ -181,11 +169,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardElevated,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  setLabel: {
-    color: colors.textSecondary,
-    fontSize: 10,
-    fontWeight: '600',
   },
   lastLabel: {
     color: colors.textMuted,

@@ -1,14 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   Animated,
   Dimensions,
-  TextInput,
 } from 'react-native';
+import { Text } from '@/components/ui/text';
+import { TextInput } from '@/components/ui/text-input';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -434,6 +434,17 @@ export default function WorkoutTimerScreen() {
           <View style={{ width: 40 }} />
         </View>
 
+        {/* Exercise image */}
+        <View style={styles.getReadyImageWrap}>
+          <ExerciseMediaCard
+            exercise={currentExercise}
+            mode="activeSession"
+            aspectRatio={1}
+            contentFit="contain"
+            rounded={MEDIA_RADIUS}
+          />
+        </View>
+
         <View style={styles.getReadyContent}>
           <Text style={styles.getReadyLabel}>Get Ready</Text>
           <Animated.View
@@ -485,6 +496,14 @@ export default function WorkoutTimerScreen() {
           <TouchableOpacity onPress={handlePause} style={styles.iconBtn}>
             <MaterialIcons name="pause" size={24} color={colors.text} />
           </TouchableOpacity>
+        </View>
+
+        <View style={styles.restImageWrap}>
+          <ExerciseMediaCard
+            exercise={currentExercise}
+            aspectRatio={1}
+            rounded={MEDIA_RADIUS}
+          />
         </View>
 
         <View style={styles.restContent}>
@@ -636,9 +655,7 @@ export default function WorkoutTimerScreen() {
           <MaterialIcons name="close" size={24} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerSubtitle}>
-            Exercise {currentExerciseIndex + 1} of {totalExercises}
-          </Text>
+          <Text style={styles.headerTitle}>{currentExercise.name}</Text>
         </View>
         <TouchableOpacity onPress={handlePause} style={styles.iconBtn}>
           <MaterialIcons name="pause" size={24} color={colors.text} />
@@ -1407,6 +1424,16 @@ const styles = StyleSheet.create({
   restRow: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center' },
 
   // Get Ready
+  getReadyImageWrap: {
+    width: MEDIA_WIDTH,
+    height: MEDIA_HEIGHT,
+    borderRadius: MEDIA_RADIUS,
+    overflow: 'hidden',
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
   getReadyContent: {
     flex: 1,
     alignItems: 'center',
@@ -1445,6 +1472,11 @@ const styles = StyleSheet.create({
   getReadyHint: { color: colors.textMuted, fontSize: fontSize.sm },
 
   // Rest
+  restImageWrap: {
+    width: MEDIA_WIDTH,
+    alignSelf: 'center',
+    marginBottom: spacing.lg,
+  },
   restContent: {
     flex: 1,
     alignItems: 'center',

@@ -1,0 +1,12 @@
+diff --git a/android/src/main/java/com/supersami/foregroundservice/NotificationHelper.java b/android/src/main/java/com/supersami/foregroundservice/NotificationHelper.java
+index 1234567..abcdefg 100644
+--- a/android/src/main/java/com/supersami/foregroundservice/NotificationHelper.java
++++ b/android/src/main/java/com/supersami/foregroundservice/NotificationHelper.java
+@@ -120,7 +120,7 @@ class NotificationHelper {
+             .setContentText(bundle.getString("message"));
+        if(bundle.getBoolean("button", false) == true){
+-           notificationBuilder.addAction(R.drawable.redbox_top_border_background, bundle.getString("buttonText", "Button"), pendingBtnIntent);
++           notificationBuilder.addAction(android.R.drawable.ic_media_play, bundle.getString("buttonText", "Button"), pendingBtnIntent);
+        }
+ 
+ 

@@ -1,5 +1,7 @@
 import React from 'react';
-import { View, Text, TextInput as RNTextInput, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '@/components/ui/text';
+import { TextInput } from '@/components/ui/text-input';
 import { colors, fontSize, spacing, borderRadius } from '../../src/components/Theme';
 
 interface InputProps {
@@ -17,7 +19,7 @@ export function Input({ label, value, onChangeText, placeholder, keyboardType, c
   return (
     <View style={[styles.container, containerStyle]}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
-      <RNTextInput
+      <TextInput
         style={[styles.input, multiline && styles.multiline]}
         value={value}
         onChangeText={onChangeText}

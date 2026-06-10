@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { colors, fontSize, spacing, borderRadius } from '../theme/colors';
 
 interface RestTimerCardProps {

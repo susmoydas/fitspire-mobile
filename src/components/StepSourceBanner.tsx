@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { View, StyleSheet, TouchableOpacity, Platform, AppState } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, fontSize, borderRadius, spacing, buttonHeight } from '../theme/colors';
 import { useStore } from '../store/useStore';
@@ -17,23 +18,56 @@ interface StepSourceBannerProps {
 export default function StepSourceBanner({ visible, onRecheck }: StepSourceBannerProps) {
   const setHealthConnectOptIn = useStore((s) => s.setHealthConnectOptIn);
   const [busy, setBusy] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
 
   if (!visible || Platform.OS !== 'android') return null;
+
+  const waitForForeground = useCallback(() => {
+    return new Promise<void>((resolve) => {
+      const subscription = AppState.addEventListener('change', (state) => {
+        if (state === 'active') {
+          subscription.remove();
+          resolve();
+        }
+      });
+    });
+  }, []);
 
   const handleConnect = async () => {
     setBusy(true);
     try {
       const status = await initHealthConnect();
+      if (!mountedRef.current) return;
       if (status.notInstalled || status.needsUpdate) {
         await openHealthConnectInstall();
+        if (!mountedRef.current) return;
+        // Wait for user to return from Play Store before re-checking
+        await waitForForeground();
+        if (!mountedRef.current) return;
+        const newStatus = await initHealthConnect();
+        if (!mountedRef.current || !newStatus.sdkAvailable) {
+          setHealthConnectOptIn('dismissed');
+          return;
+        }
+        const granted = await requestHealthConnectPermissions();
+        if (!mountedRef.current) return;
+        setHealthConnectOptIn(granted ? 'granted' : 'denied');
+        onRecheck?.();
         return;
       }
       if (!status.sdkAvailable) return;
       const granted = await requestHealthConnectPermissions();
+      if (!mountedRef.current) return;
       setHealthConnectOptIn(granted ? 'granted' : 'denied');
       onRecheck?.();
+    } catch {
+      // Silently handle — banner remains visible
     } finally {
-      setBusy(false);
+      if (mountedRef.current) setBusy(false);
     }
   };
 

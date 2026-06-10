@@ -293,8 +293,8 @@ export async function sendFitnessChatMessage(
     return { success: false, error: 'Please write your question first.' };
   }
 
-  const key = AI_CONFIG.groqApiKey;
-  if (!key || key === 'PASTE_YOUR_GROQ_API_KEY_HERE') {
+  const key = AI_CONFIG.geminiApiKey;
+  if (!key) {
     return {
       success: false,
       error: 'AI assistant is not available right now. Please try again later.',
@@ -331,6 +331,6 @@ Answer using the structure when helpful. Preserve line breaks.`;
 }
 
 export function isGroqConfigured(): boolean {
-  const key = AI_CONFIG.groqApiKey;
-  return !!key && key !== 'PASTE_YOUR_GROQ_API_KEY_HERE';
+  const key = AI_CONFIG.geminiApiKey;
+  return !!key;
 }

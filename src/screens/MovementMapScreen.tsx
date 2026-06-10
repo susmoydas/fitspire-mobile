@@ -1,13 +1,13 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   Dimensions,
   Platform,
   Linking,
 } from 'react-native';
+import { Text } from '@/components/ui/text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,6 +17,7 @@ import { colors, fontSize, spacing, borderRadius } from '../theme/colors';
 import { useStore } from '../store/useStore';
 import TrainingMap, { TrainingMapRef } from '../components/TrainingMap';
 import * as Location from 'expo-location';
+import { haversineDistanceKm } from '../utils/calculations';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type MapRoute = RouteProp<RootStackParamList, 'MovementMap'>;
@@ -31,24 +32,6 @@ function formatDuration(seconds: number): string {
   const m = Math.round(seconds / 60);
   if (m < 60) return `${m}m`;
   return `${Math.floor(m / 60)}h ${m % 60}m`;
-}
-
-function estimateDistanceFromRoute(points: { latitude: number; longitude: number }[]): number {
-  let total = 0;
-  for (let i = 1; i < points.length; i++) {
-    const p1 = points[i - 1];
-    const p2 = points[i];
-    const R = 6371000;
-    const dLat = ((p2.latitude - p1.latitude) * Math.PI) / 180;
-    const dLng = ((p2.longitude - p1.longitude) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos((p1.latitude * Math.PI) / 180) *
-        Math.cos((p2.latitude * Math.PI) / 180) *
-        Math.sin(dLng / 2) ** 2;
-    total += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  }
-  return parseFloat((total / 1000).toFixed(2));
 }
 
 export default function MovementMapScreen() {
@@ -90,7 +73,7 @@ export default function MovementMapScreen() {
 
   const totalDistance = useMemo(() => {
     if (allRoutePoints.length < 2) return 0;
-    return estimateDistanceFromRoute(allRoutePoints);
+    return haversineDistanceKm(allRoutePoints);
   }, [allRoutePoints]);
 
   const totalDuration = useMemo(() => {
